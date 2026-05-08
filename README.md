@@ -11,5 +11,5 @@ Required repository secrets:
 The page also supports immediate playback after upload with:
 
 ```text
-https://raulg0mez.github.io/loom/?video=<CLOUDFLARE_STREAM_UID>
+https://raulg0mez.github.io/Loom/?video=<CLOUDFLARE_STREAM_UID>
 ```
