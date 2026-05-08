@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LoomLocal Library</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <span class="eyebrow">LoomLocal</span>
+          <h1>Biblioteca de videos</h1>
+        </div>
+        <a class="cloud-link" href="https://dash.cloudflare.com/" target="_blank" rel="noreferrer">Cloudflare</a>
+      </header>
+
+      <section id="currentVideo" class="current-video hidden"></section>
+
+      <section class="library-head">
+        <div>
+          <h2>Grabaciones</h2>
+          <p id="libraryMeta">Cargando videos...</p>
+        </div>
+        <button id="refreshBtn" type="button">Actualizar</button>
+      </section>
+
+      <section id="videoGrid" class="video-grid"></section>
+      <section id="emptyState" class="empty-state hidden">
+        <strong>No hay videos todavía</strong>
+        <span>Cuando LoomLocal suba una grabación a Cloudflare Stream, aparecerá aquí.</span>
+      </section>
+    </main>
+
+    <script src="./config.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>

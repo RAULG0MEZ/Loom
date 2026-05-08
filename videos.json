@@ -1,0 +1,16 @@
+{
+  "generatedAt": "2026-05-08T22:59:13.748Z",
+  "videos": [
+    {
+      "uid": "270ffdad8ae2d1a796ad7f08714dc80a",
+      "title": "2026-05-08T21-10-12-876Z-Grabacin-LoomLocal.mp4",
+      "created": "2026-05-08T21:10:16.466219Z",
+      "duration": 18.4,
+      "size": 2142757,
+      "readyToStream": true,
+      "watch": "https://customer-iu06bnsdmy3zwmya.cloudflarestream.com/270ffdad8ae2d1a796ad7f08714dc80a/watch",
+      "iframe": "https://customer-iu06bnsdmy3zwmya.cloudflarestream.com/270ffdad8ae2d1a796ad7f08714dc80a/iframe",
+      "thumbnail": "https://customer-iu06bnsdmy3zwmya.cloudflarestream.com/270ffdad8ae2d1a796ad7f08714dc80a/thumbnails/thumbnail.jpg?time=1s&height=360"
+    }
+  ]
+}
