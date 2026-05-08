@@ -21,6 +21,16 @@ function formatDuration(seconds) {
   return `${minutes}:${String(rest).padStart(2, '0')}`;
 }
 
+function escapeHtml(value) {
+  return String(value || '').replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;'
+  }[char]));
+}
+
 function videoUrls(uid) {
   return {
     watch: `https://${streamHost}/${uid}/watch`,
@@ -49,20 +59,46 @@ function cardTemplate(video) {
     </article>`;
 }
 
-function renderCurrentVideo(uid) {
+function renderCurrentVideo(uid, status = '', title = '') {
   if (!uid || !streamHost) return;
   const urls = videoUrls(uid);
+  const pending = status === 'uploading' || status === 'processing';
+  const heading = status === 'uploading'
+    ? 'Estamos subiendo tu video'
+    : pending
+      ? 'Cloudflare está procesando tu video'
+      : 'Tu video ya está en Cloudflare';
+  const detail = pending
+    ? 'El reproductor puede tardar unos segundos en activarse. Esta página se refresca solita mientras queda listo.'
+    : 'Ya puedes verlo, compartirlo o copiar el link.';
   currentVideo.classList.remove('hidden');
   currentVideo.innerHTML = `
     <div class="current-copy">
       <span class="eyebrow">Recién grabado</span>
-      <h2>Tu video ya está en Cloudflare</h2>
+      <h2>${heading}</h2>
+      <p>${escapeHtml(title) || detail}</p>
+      ${pending ? `<div class="upload-status"><span></span>${detail}</div>` : ''}
       <div class="video-actions">
         <a href="${urls.watch}" target="_blank" rel="noreferrer">Abrir video</a>
         <button type="button" data-copy="${urls.watch}">Copiar link</button>
       </div>
     </div>
-    <iframe src="${urls.iframe}" allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" allowfullscreen></iframe>`;
+    <div class="player-shell ${pending ? 'is-loading' : ''}">
+      <iframe src="${urls.iframe}" allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" allowfullscreen></iframe>
+      ${pending ? '<div class="player-loading"><span></span><strong>Preparando video...</strong></div>' : ''}
+    </div>`;
+
+  if (pending) {
+    const iframe = currentVideo.querySelector('iframe');
+    const overlay = currentVideo.querySelector('.player-loading');
+    iframe.addEventListener('load', () => {
+      setTimeout(() => overlay?.classList.add('soft'), 1800);
+    });
+    setInterval(() => {
+      iframe.src = `${urls.iframe}?refresh=${Date.now()}`;
+      loadVideos();
+    }, 12000);
+  }
 }
 
 async function loadVideos() {
@@ -97,5 +133,5 @@ document.addEventListener('click', async (event) => {
 refreshBtn.addEventListener('click', loadVideos);
 
 const params = new URLSearchParams(window.location.search);
-renderCurrentVideo(params.get('video'));
+renderCurrentVideo(params.get('video'), params.get('status'), params.get('title'));
 loadVideos();
