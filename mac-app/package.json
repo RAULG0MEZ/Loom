@@ -1,0 +1,64 @@
+{
+  "name": "loom-mac",
+  "version": "1.0.20",
+  "description": "Local-first Loom-style recorder for macOS.",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --mac dir",
+    "dist": "electron-builder --mac dmg --arm64",
+    "dist:universal": "electron-builder --mac dmg --universal"
+  },
+  "build": {
+    "appId": "com.local.loomlocal",
+    "productName": "Loom",
+    "afterPack": "scripts/afterPack.js",
+    "mac": {
+      "category": "public.app-category.productivity",
+      "minimumSystemVersion": "12.3",
+      "extendInfo": {
+        "NSCameraUsageDescription": "Loom usa la cámara para grabar tu burbuja de video.",
+        "NSMicrophoneUsageDescription": "Loom usa el micrófono para grabar tu voz.",
+        "NSAudioCaptureUsageDescription": "Loom no graba audio del sistema por defecto; macOS usa este permiso para la categoría de grabación de pantalla y audio.",
+        "NSScreenCaptureDescription": "Loom necesita grabar la pantalla para crear videos locales."
+      },
+      "icon": "build/icon.icns",
+      "target": [
+        "dmg"
+      ]
+    },
+    "dmg": {
+      "title": "Loom",
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    },
+    "files": [
+      "src/**/*",
+      "scripts/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "node_modules/ffmpeg-static/ffmpeg",
+        "to": "ffmpeg/ffmpeg"
+      }
+    ]
+  },
+  "devDependencies": {
+    "electron": "^34.5.8",
+    "electron-builder": "^24.13.3"
+  },
+  "dependencies": {
+    "ffmpeg-static": "^5.3.0"
+  }
+}

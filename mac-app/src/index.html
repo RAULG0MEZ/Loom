@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Loom</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <div id="overlayRoot">
+      <canvas id="drawCanvas"></canvas>
+      <div id="areaSelectionLayer" class="area-selection-layer interactive hidden">
+        <div class="area-hint">Arrastra para seleccionar el área</div>
+        <div id="areaSelectionBox" class="area-selection-box"></div>
+      </div>
+
+      <section id="cameraOverlay" class="camera-overlay circle interactive">
+        <video id="cameraPreview" autoplay muted playsinline></video>
+        <div class="camera-toolbar interactive">
+          <div class="shape-pills" title="Forma">
+            <button class="selected" data-shape="circle">Círculo</button>
+            <button data-shape="rounded">Suave</button>
+            <button data-shape="square">Recto</button>
+          </div>
+          <div class="size-pills" title="Tamaño">
+            <button data-size="small">S</button>
+            <button class="selected" data-size="medium">M</button>
+            <button data-size="large">L</button>
+            <button class="wide-size" data-size="full">Pantalla completa</button>
+          </div>
+        </div>
+      </section>
+      <button id="cornerQuitBtn" class="corner-quit interactive" title="Cerrar Loom">×</button>
+
+      <section id="controlPanel" class="control-panel interactive">
+        <header id="dragHandle" class="panel-header">
+          <div class="brand-row">
+            <div class="brand-mark" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 2v20M4.93 4.93l14.14 14.14M2 12h20M4.93 19.07 19.07 4.93"/></svg>
+            </div>
+            <strong>Loom</strong>
+          </div>
+          <div class="header-actions">
+            <span id="recTimer">00:00</span>
+            <button id="quitBtn" title="Cerrar Loom">×</button>
+          </div>
+        </header>
+
+        <div class="mode-row">
+          <button class="selected" data-mode="screenCamera"><span><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8M12 17v4"/></svg></span>Pantalla + cámara</button>
+          <button class="secondary-mode" data-mode="customArea"><span><svg viewBox="0 0 24 24"><path d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2"/><rect x="8" y="8" width="8" height="8" rx="1"/></svg></span>Área personalizada</button>
+          <button class="secondary-mode" data-mode="screenOnly"><span><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8M12 17v4"/></svg></span>Pantalla completa</button>
+          <button class="secondary-mode" data-mode="cameraOnly"><span><svg viewBox="0 0 24 24"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h8A2.5 2.5 0 0 1 17 8.5v7A2.5 2.5 0 0 1 14.5 18h-8A2.5 2.5 0 0 1 4 15.5z"/><path d="m17 10 4-2.5v9L17 14"/></svg></span>Solo cámara</button>
+        </div>
+
+        <div class="device-card camera-field">
+          <div class="device-main">
+            <span class="device-icon"><svg viewBox="0 0 24 24"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h8A2.5 2.5 0 0 1 17 8.5v7A2.5 2.5 0 0 1 14.5 18h-8A2.5 2.5 0 0 1 4 15.5z"/><path d="m17 10 4-2.5v9L17 14"/></svg></span>
+            <div>
+              <strong id="cameraName">Cámara</strong>
+              <small id="cameraHint">Lista para grabar</small>
+            </div>
+          </div>
+          <label class="loom-switch">
+            <input id="cameraToggle" type="checkbox" checked>
+            <span>Sí</span>
+          </label>
+          <div id="cameraButtons" class="device-options"></div>
+          <button id="cameraTestBtn" class="soft-action hidden" title="Activar vista previa">Activar cámara</button>
+        </div>
+
+        <div class="device-card">
+          <div class="device-main">
+            <span class="device-icon"><svg viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z"/><path d="M19 11a7 7 0 0 1-14 0M12 18v3M8 21h8"/></svg></span>
+            <div>
+              <strong>Micrófono</strong>
+              <small>Entrada local</small>
+            </div>
+          </div>
+          <label class="loom-switch">
+            <input id="micToggle" type="checkbox" checked>
+            <span>Sí</span>
+          </label>
+        </div>
+
+        <div class="mini-actions panel-more">
+          <label><input id="countdownToggle" type="checkbox" checked><span>3s</span></label>
+          <label><input id="drawToggle" type="checkbox" checked><span>Dibujo</span></label>
+        </div>
+        <input id="systemAudioToggle" type="checkbox" hidden disabled>
+
+        <input id="titleInput" value="Grabación Loom" hidden>
+
+        <div class="settings-section">
+          <div class="setting-row">
+            <div>
+              <span class="section-label">Resolución</span>
+              <strong id="qualityLabel">1080p</strong>
+            </div>
+            <div class="dropdown">
+              <button id="qualityDropdownBtn" class="dropdown-trigger" type="button"><span>1080p</span><b>⌄</b></button>
+              <div id="qualityMenu" class="dropdown-menu hidden">
+                <button data-quality="720">720p</button>
+                <button class="selected" data-quality="1080">1080p</button>
+                <button data-quality="1440">1440p</button>
+                <button data-quality="2160">4K</button>
+              </div>
+            </div>
+            <input id="qualitySelect" value="1080" hidden>
+          </div>
+
+          <div class="setting-row save-row">
+            <div>
+              <span class="section-label">Guardado</span>
+              <strong id="saveTargetLabel">Local</strong>
+            </div>
+            <div class="dropdown">
+              <button id="saveTargetBtn" class="dropdown-trigger" type="button"><span>Local</span><b>⌄</b></button>
+              <div id="saveTargetMenu" class="dropdown-menu save-menu hidden">
+                <button data-save-target="local">
+                  <strong>Local</strong>
+                  <small id="localTargetStatus">En carpeta</small>
+                </button>
+                <button data-save-target="cloud">
+                  <strong>Cloudflare Stream</strong>
+                  <small id="cloudStatus">Revisando nube</small>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div id="localFolderRow" class="folder-row">
+            <button id="chooseFolderBtn" class="folder-button" type="button">
+              <span id="localFolderName">Escritorio</span>
+              <small id="localFolderPath">Carpeta local</small>
+            </button>
+            <button id="openFolderBtn" class="icon-action" type="button" title="Abrir carpeta">↗</button>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button id="startBtn" class="primary">Iniciar grabación</button>
+          <button id="restartBtn" title="Reiniciar" disabled>↺</button>
+          <button id="stopBtn" class="danger" disabled>Detener</button>
+        </div>
+
+      </section>
+
+      <div id="countdown" class="countdown hidden">3</div>
+      <div id="liveControls" class="live-controls interactive hidden">
+        <div id="liveDragHandle" class="live-drag-handle" title="Mover controles" aria-label="Mover controles">
+          <span></span><span></span><span></span>
+          <span></span><span></span><span></span>
+        </div>
+        <button id="livePauseBtn" type="button" title="Pausar">Ⅱ</button>
+        <button id="livePenBtn" type="button" title="Plumita">✎</button>
+        <button id="liveStopBtn" type="button" title="Terminar">■</button>
+        <button id="liveCancelBtn" type="button" title="Cancelar">×</button>
+      </div>
+      <div id="saveToast" class="save-toast hidden">Guardado en el Escritorio</div>
+
+      <video id="screenVideo" muted playsinline></video>
+      <video id="cameraVideo" muted playsinline></video>
+      <canvas id="recordCanvas"></canvas>
+    </div>
+
+    <script src="./renderer.js"></script>
+  </body>
+</html>
