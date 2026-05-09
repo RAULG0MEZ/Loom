@@ -375,8 +375,11 @@ async function authorizeGoogleFromUi() {
     showToast('Abriendo Google para conectar...');
     const status = await window.loomLocal.authorizeGoogleCloud();
     applyCloudStatus(status);
-    updateCloudUi();
-    showToast('Google conectado');
+    const nextProvider = cloudProvider === 'youtube' ? 'youtube' : 'googleDrive';
+    await setSaveTarget(nextProvider);
+    closeSettingsPanel();
+    closeDropdowns();
+    showToast(`${getProviderLabel(nextProvider)} conectado y seleccionado`);
   } catch (error) {
     console.error(error);
     alert(`No pude conectar Google: ${error.message}`);

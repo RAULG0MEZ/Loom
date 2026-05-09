@@ -564,7 +564,7 @@ async function authorizeGoogleCloud() {
       response.writeHead(error || !code || receivedState !== state ? 400 : 200, { 'Content-Type': 'text/html; charset=utf-8' });
       response.end(error
         ? '<h2>Google no autorizo Loom.</h2><p>Revisa que esta cuenta este agregada como usuario de prueba en Google Cloud. Puedes cerrar esta ventana.</p>'
-        : '<h2>Google conectado con Loom.</h2><p>Ya puedes cerrar esta ventana y volver a la app.</p>');
+        : '<h2>Google conectado con Loom.</h2><p>Ya puedes volver a la app.</p><script>setTimeout(() => window.close(), 700)</script>');
 
       if (callbackSettled) return;
       callbackSettled = true;
