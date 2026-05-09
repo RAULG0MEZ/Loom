@@ -76,6 +76,10 @@ input:focus {
   display: none;
 }
 
+body.recording .corner-quit {
+  display: none;
+}
+
 .corner-quit:hover {
   color: #fff;
   background: var(--danger);

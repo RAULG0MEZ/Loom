@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('loomLocal', {
   listSources: () => ipcRenderer.invoke('sources:list'),
   saveRecording: (payload) => ipcRenderer.invoke('recordings:save', payload),
+  saveTempRecordingLocally: (payload) => ipcRenderer.invoke('recordings:saveTempLocally', payload),
   listRecordings: () => ipcRenderer.invoke('recordings:list'),
   revealRecording: (filePath) => ipcRenderer.invoke('recordings:reveal', filePath),
   openFolder: () => ipcRenderer.invoke('recordings:openFolder'),

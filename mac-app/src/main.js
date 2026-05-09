@@ -428,28 +428,32 @@ async function convertRecordingToMp4(inputPath, outputPath) {
   ], { windowsHide: true });
 }
 
-ipcMain.handle('recordings:save', async (_event, payload) => {
-  const saveToTemp = payload.destination === 'temp';
-  const targetDir = saveToTemp ? path.join(os.tmpdir(), 'loomlocal-recordings') : await getRecordingsDir();
-  await fs.mkdir(targetDir, { recursive: true });
-  const safeTitle = (payload.title || 'Grabacion')
+async function makeRecordingOutputPath(targetDir, title) {
+  const safeTitle = (title || 'Grabacion')
     .replace(/[^a-z0-9-_ ]/gi, '')
     .trim()
     .replace(/\s+/g, '-')
     .slice(0, 60) || 'Grabacion';
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  return path.join(targetDir, `${stamp}-${safeTitle}.mp4`);
+}
+
+ipcMain.handle('recordings:save', async (_event, payload) => {
+  const saveToTemp = payload.destination === 'temp';
+  const targetDir = saveToTemp ? path.join(os.tmpdir(), 'loomlocal-recordings') : await getRecordingsDir();
+  await fs.mkdir(targetDir, { recursive: true });
   const buffer = Buffer.from(payload.buffer);
   if (buffer.length === 0) {
     throw new Error('La grabacion no genero datos de video. Intenta de nuevo y espera un segundo antes de detener.');
   }
 
-  const outputPath = path.join(targetDir, `${stamp}-${safeTitle}.mp4`);
+  const outputPath = await makeRecordingOutputPath(targetDir, payload.title);
   if (payload.mimeType && payload.mimeType.includes('mp4')) {
     await fs.writeFile(outputPath, buffer);
     return { filePath: outputPath, temporary: saveToTemp };
   }
 
-  const tempPath = path.join(os.tmpdir(), `${stamp}-${safeTitle}.webm`);
+  const tempPath = path.join(os.tmpdir(), `${path.basename(outputPath, '.mp4')}.webm`);
   await fs.writeFile(tempPath, buffer);
   try {
     await convertRecordingToMp4(tempPath, outputPath);
@@ -457,6 +461,24 @@ ipcMain.handle('recordings:save', async (_event, payload) => {
   } finally {
     await fs.unlink(tempPath).catch(() => {});
   }
+});
+
+ipcMain.handle('recordings:saveTempLocally', async (_event, payload) => {
+  const sourcePath = path.resolve(String(payload.filePath || ''));
+  const tempRoot = path.resolve(path.join(os.tmpdir(), 'loomlocal-recordings'));
+  if (!sourcePath.startsWith(tempRoot + path.sep)) {
+    throw new Error('No puedo mover un archivo temporal desconocido.');
+  }
+
+  await fs.access(sourcePath);
+  const targetDir = await getRecordingsDir();
+  await fs.mkdir(targetDir, { recursive: true });
+  const outputPath = await makeRecordingOutputPath(targetDir, payload.title || path.basename(sourcePath, '.mp4'));
+  await fs.rename(sourcePath, outputPath).catch(async () => {
+    await fs.copyFile(sourcePath, outputPath);
+    await fs.unlink(sourcePath).catch(() => {});
+  });
+  return { filePath: outputPath, temporary: false };
 });
 
 ipcMain.handle('cloudflare:status', async () => {

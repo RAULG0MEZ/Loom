@@ -563,6 +563,9 @@ async function startRecording() {
   try {
     if (isRecording) return;
     if (mode === 'customArea' && !captureRegion) captureRegion = getDefaultCaptureRegion();
+    drawToggle.checked = false;
+    document.body.classList.remove('drawing-enabled');
+    clearDrawing();
     hideAreaSelection();
     await getStreams();
     if (countdownToggle.checked) await runCountdown();
@@ -701,13 +704,25 @@ async function saveRecording() {
 
     if (shouldUploadToCloud) {
       showToast('Subiendo a Cloudflare Stream...');
-      const upload = await window.loomLocal.uploadToCloudflare({
-        filePath,
-        title: titleInput.value,
-        deleteLocal: true
-      });
-      playRecordCue('complete');
-      showToast(upload.watchUrl ? 'Subido a Cloudflare. Link copiado.' : 'Subido a Cloudflare.');
+      try {
+        const upload = await window.loomLocal.uploadToCloudflare({
+          filePath,
+          title: titleInput.value,
+          deleteLocal: true
+        });
+        playRecordCue('complete');
+        showToast(upload.watchUrl ? 'Subido a Cloudflare. Link copiado.' : 'Subido a Cloudflare.');
+      } catch (uploadError) {
+        console.error(uploadError);
+        const fallback = await window.loomLocal.saveTempRecordingLocally({
+          filePath,
+          title: titleInput.value
+        });
+        playRecordCue('complete');
+        const reason = humanCloudUploadError(uploadError);
+        showToast(`Cloudflare falló; guardado local: ${fallback.filePath.split('/').pop()}`);
+        alert(`${reason}\n\nNo perdí la grabación: quedó guardada localmente en:\n${fallback.filePath}`);
+      }
     } else {
       playRecordCue('complete');
       showToast(`Guardado en ${localSaveDirName || 'la carpeta'}: ${filePath.split('/').pop()}`);
@@ -718,6 +733,15 @@ async function saveRecording() {
     console.error(error);
     alert(`No pude guardar la grabación: ${error.message}`);
   }
+}
+
+function humanCloudUploadError(error) {
+  const raw = String(error?.message || error || 'Cloudflare no pudo subir el video.');
+  const message = raw.replace(/^Error invoking remote method 'cloudflare:upload': Error:\s*/i, '').trim();
+  if (/storage capacity exceeded|quota|allocated storage/i.test(message)) {
+    return 'Cloudflare Stream se quedó sin espacio para subir videos. Borra videos viejos o compra más minutos/almacenamiento para poder subir más.';
+  }
+  return `Cloudflare no pudo subir el video: ${message}`;
 }
 
 function cleanup() {
