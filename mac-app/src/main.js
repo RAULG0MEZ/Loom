@@ -513,11 +513,17 @@ async function authorizeGoogleCloud() {
   let timeout;
   let callbackSettled = false;
   let server;
+  let redirectUri = '';
 
   const callbackPromise = new Promise((resolve, reject) => {
     server = http.createServer((request, response) => {
-      const redirectBase = `http://127.0.0.1:${server.address().port}`;
-      const url = new URL(request.url, redirectBase);
+      if (!redirectUri) {
+        response.writeHead(503, { 'Content-Type': 'text/html; charset=utf-8' });
+        response.end('<h2>Loom todavia no esta listo.</h2><p>Vuelve a intentar conectar Google.</p>');
+        return;
+      }
+
+      const url = new URL(request.url, redirectUri);
       if (url.pathname !== '/oauth2callback') {
         response.writeHead(404);
         response.end('Not found');
@@ -525,11 +531,12 @@ async function authorizeGoogleCloud() {
       }
 
       const error = url.searchParams.get('error');
+      const errorDescription = url.searchParams.get('error_description') || '';
       const code = url.searchParams.get('code');
       const receivedState = url.searchParams.get('state');
       response.writeHead(error || !code || receivedState !== state ? 400 : 200, { 'Content-Type': 'text/html; charset=utf-8' });
       response.end(error
-        ? '<h2>Google no autorizo Loom.</h2><p>Puedes cerrar esta ventana.</p>'
+        ? '<h2>Google no autorizo Loom.</h2><p>Revisa que esta cuenta este agregada como usuario de prueba en Google Cloud. Puedes cerrar esta ventana.</p>'
         : '<h2>Google conectado con Loom.</h2><p>Ya puedes cerrar esta ventana y volver a la app.</p>');
 
       if (callbackSettled) return;
@@ -540,9 +547,14 @@ async function authorizeGoogleCloud() {
       } catch {
         // The timeout/finally path can close the loopback server first.
       }
-      if (error) reject(new Error(`Google rechazo la autorizacion: ${error}`));
+      if (error) {
+        const friendly = error === 'access_denied'
+          ? 'Google bloqueo el acceso. Si tu app sigue en Testing, agrega el correo exacto como Usuario de prueba en Google Cloud y vuelve a intentar con esa misma cuenta.'
+          : `Google rechazo la autorizacion: ${error}`;
+        reject(new Error(errorDescription ? `${friendly}\n\nDetalle Google: ${errorDescription}` : friendly));
+      }
       else if (!code || receivedState !== state) reject(new Error('La respuesta OAuth de Google no fue valida.'));
-      else resolve({ code, redirectUri: redirectBase + '/oauth2callback' });
+      else resolve({ code, redirectUri });
     });
 
     server.on('error', reject);
@@ -552,6 +564,17 @@ async function authorizeGoogleCloud() {
     server.listen(0, '127.0.0.1', resolve);
     server.once('error', reject);
   });
+
+  const address = server.address();
+  if (!address || typeof address === 'string' || !address.port) {
+    try {
+      server.close();
+    } catch {
+      // Nothing else to clean up.
+    }
+    throw new Error('No pude abrir el callback local para Google OAuth.');
+  }
+  redirectUri = `http://127.0.0.1:${address.port}/oauth2callback`;
 
   timeout = setTimeout(() => {
     if (callbackSettled) return;
@@ -563,7 +586,6 @@ async function authorizeGoogleCloud() {
     }
   }, 120000);
 
-  const redirectUri = `http://127.0.0.1:${server.address().port}/oauth2callback`;
   const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   authUrl.searchParams.set('client_id', googleDesktopClientId);
   authUrl.searchParams.set('redirect_uri', redirectUri);
