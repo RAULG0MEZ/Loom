@@ -15,6 +15,18 @@ let trayRecordingPaused = false;
 
 app.setName('Loom');
 
+function disableOpenAtLogin() {
+  if (process.platform !== 'darwin') return;
+  try {
+    app.setLoginItemSettings({
+      openAtLogin: false,
+      openAsHidden: false
+    });
+  } catch (error) {
+    console.warn('No pude desactivar el inicio automatico:', error.message);
+  }
+}
+
 function createWindow() {
   const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
   const win = new BrowserWindow({
@@ -46,6 +58,7 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  disableOpenAtLogin();
   await fs.mkdir(await getRecordingsDir(), { recursive: true });
   configurePermissions();
   createAppMenu();
