@@ -71,8 +71,18 @@ npx wrangler secret put DELETE_PASSCODE
 npx wrangler deploy
 ```
 
-Despues copia la URL del Worker en `config.js` como `deleteApiUrl`, por ejemplo:
+Si Wrangler falla por permisos de `/memberships`, despliega directo con la API:
 
-```js
-deleteApiUrl: 'https://loom-video-admin.<tu-subdominio>.workers.dev/delete'
+```bash
+CLOUDFLARE_ACCOUNT_ID="..." \
+CLOUDFLARE_API_TOKEN="..." \
+CLOUDFLARE_STREAM_API_TOKEN="..." \
+DELETE_PASSCODE="..." \
+node cloudflare-worker/deploy.mjs
 ```
+
+Worker actual:
+
+https://loom-video-admin.milemedia-mkt.workers.dev
+
+La URL de borrado vive en `config.js` como `deleteApiUrl`.
