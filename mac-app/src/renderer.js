@@ -375,6 +375,12 @@ function closeSettingsPanel() {
   settingsPanel.classList.add('hidden');
 }
 
+function keepOverlayInteractive(event) {
+  if (event) event.stopPropagation();
+  pointerIgnored = false;
+  if (window.loomLocal) window.loomLocal.setMousePassthrough(false);
+}
+
 async function authorizeGoogleFromUi() {
   if (!window.loomLocal?.authorizeGoogleCloud) return;
   try {
@@ -414,7 +420,11 @@ async function disconnectGoogleFromUi() {
   try {
     const status = await window.loomLocal.disconnectGoogleCloud();
     applyCloudStatus(status);
-    updateCloudUi();
+    if (saveTarget === 'cloud' && ['googleDrive', 'youtube'].includes(cloudProvider)) {
+      await setSaveTarget('local');
+    } else {
+      updateCloudUi();
+    }
     showToast('Google desconectado');
   } catch (error) {
     console.error(error);
@@ -1418,8 +1428,20 @@ if (cloudToggle) {
     await setSaveTarget(cloudUploadEnabled ? 'local' : cloudProvider);
   });
 }
-if (settingsBtn) settingsBtn.addEventListener('click', openSettingsPanel);
-if (settingsCloseBtn) settingsCloseBtn.addEventListener('click', closeSettingsPanel);
+if (settingsBtn) {
+  settingsBtn.addEventListener('pointerdown', keepOverlayInteractive);
+  settingsBtn.addEventListener('click', (event) => {
+    event.stopPropagation();
+    openSettingsPanel();
+  });
+}
+if (settingsCloseBtn) {
+  settingsCloseBtn.addEventListener('pointerdown', keepOverlayInteractive);
+  settingsCloseBtn.addEventListener('click', (event) => {
+    event.stopPropagation();
+    closeSettingsPanel();
+  });
+}
 if (authorizeGoogleBtn) authorizeGoogleBtn.addEventListener('click', authorizeGoogleFromUi);
 if (chooseDriveLocationBtn) chooseDriveLocationBtn.addEventListener('click', chooseDriveLocationFromUi);
 if (disconnectGoogleBtn) disconnectGoogleBtn.addEventListener('click', disconnectGoogleFromUi);
@@ -1457,6 +1479,7 @@ document.addEventListener('click', (event) => {
 quitBtn.addEventListener('click', () => {
   requestQuit();
 });
+quitBtn.addEventListener('pointerdown', keepOverlayInteractive);
 cornerQuitBtn.addEventListener('click', () => {
   requestQuit();
 });
@@ -1547,6 +1570,10 @@ window.addEventListener('pointermove', (event) => {
   moveTarget(event);
   resizeCamera(event);
   updatePointerPassthrough(event);
+});
+document.querySelectorAll('.interactive').forEach((element) => {
+  element.addEventListener('pointerenter', () => keepOverlayInteractive());
+  element.addEventListener('pointermove', () => keepOverlayInteractive());
 });
 window.addEventListener('pointerup', endPointer);
 if (areaSelectionLayer) {
