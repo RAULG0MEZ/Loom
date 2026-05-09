@@ -4,4 +4,5 @@ dist/
 mac-app/node_modules/
 mac-app/dist/
 mac-app/out/
+mac-app/src/google-oauth-client.private.json
 *.log

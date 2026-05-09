@@ -12,6 +12,7 @@ const defaultRecordingsDir = path.join(os.homedir(), 'Desktop');
 const cloudUploadLimitBytes = 200 * 1024 * 1024;
 const cloudProviderIds = ['cloudflare', 'googleDrive', 'youtube'];
 const googleDesktopClientId = '552980012509-nfeitghc0aq7i9e526u0aee2t2btcs95.apps.googleusercontent.com';
+const googleOAuthPrivateConfigName = 'google-oauth-client.private.json';
 const googleScopes = [
   'https://www.googleapis.com/auth/drive.file',
   'https://www.googleapis.com/auth/youtube.upload'
@@ -399,6 +400,27 @@ function getGoogleConfigPath() {
   return path.join(app.getPath('userData'), 'google-cloud.json');
 }
 
+async function readGoogleOAuthClient() {
+  const candidates = [
+    path.join(__dirname, googleOAuthPrivateConfigName),
+    path.join(process.resourcesPath || '', googleOAuthPrivateConfigName)
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      const raw = await fs.readFile(candidate, 'utf8');
+      const config = JSON.parse(raw);
+      const clientId = String(config.clientId || googleDesktopClientId).trim();
+      const clientSecret = String(config.clientSecret || '').trim();
+      if (clientId && clientSecret) return { clientId, clientSecret };
+    } catch {
+      // Try next packaged/private config location.
+    }
+  }
+
+  return { clientId: googleDesktopClientId, clientSecret: '' };
+}
+
 async function readGoogleConfig() {
   try {
     const raw = await fs.readFile(getGoogleConfigPath(), 'utf8');
@@ -508,6 +530,11 @@ function createPkcePair() {
 
 async function authorizeGoogleCloud() {
   const config = await readGoogleConfig();
+  const oauthClient = await readGoogleOAuthClient();
+  if (!oauthClient.clientSecret) {
+    throw new Error('Falta la configuración privada de Google OAuth dentro de la app. Reinstala el DMG más reciente.');
+  }
+
   const state = crypto.randomBytes(18).toString('hex');
   const pkce = createPkcePair();
   let timeout;
@@ -587,7 +614,7 @@ async function authorizeGoogleCloud() {
   }, 120000);
 
   const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
-  authUrl.searchParams.set('client_id', googleDesktopClientId);
+  authUrl.searchParams.set('client_id', oauthClient.clientId);
   authUrl.searchParams.set('redirect_uri', redirectUri);
   authUrl.searchParams.set('response_type', 'code');
   authUrl.searchParams.set('scope', googleScopes.join(' '));
@@ -616,7 +643,8 @@ async function authorizeGoogleCloud() {
 
   const token = await requestGoogleToken({
     code: codePayload.code,
-    client_id: googleDesktopClientId,
+    client_id: oauthClient.clientId,
+    client_secret: oauthClient.clientSecret,
     code_verifier: pkce.verifier,
     redirect_uri: codePayload.redirectUri,
     grant_type: 'authorization_code'
@@ -650,12 +678,17 @@ async function getGoogleAccessToken() {
   if (!config.refreshToken) {
     throw new Error('Google no esta conectado. Abre Ajustes y autoriza Google Drive/YouTube.');
   }
+  const oauthClient = await readGoogleOAuthClient();
+  if (!oauthClient.clientSecret) {
+    throw new Error('Falta la configuración privada de Google OAuth dentro de la app. Reinstala el DMG más reciente.');
+  }
   if (config.accessToken && config.expiresAt > Date.now() + 30000) {
     return config.accessToken;
   }
 
   const token = await requestGoogleToken({
-    client_id: googleDesktopClientId,
+    client_id: oauthClient.clientId,
+    client_secret: oauthClient.clientSecret,
     refresh_token: config.refreshToken,
     grant_type: 'refresh_token'
   });
