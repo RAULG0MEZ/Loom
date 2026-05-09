@@ -25,7 +25,9 @@ body,
   margin: 0;
   overflow: hidden;
   background: transparent;
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+  font-weight: 400;
+  letter-spacing: 0;
 }
 
 button,
@@ -167,7 +169,7 @@ body.selecting-area .control-panel {
 
 .panel-header strong {
   font-size: 15px;
-  font-weight: 650;
+  font-weight: 550;
 }
 
 .panel-header span {
@@ -178,7 +180,7 @@ body.selecting-area .control-panel {
 #recTimer {
   min-width: 56px;
   color: var(--text);
-  font-weight: 800;
+  font-weight: 550;
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
@@ -216,34 +218,20 @@ body.selecting-area .control-panel {
   display: flex;
   align-items: center;
   gap: 9px;
-  min-height: 44px;
-  padding: 0 15px;
+  min-height: 42px;
+  padding: 0 12px;
   border-radius: 999px;
   color: var(--text);
   background: #f4f5f8;
-  font-size: 13px;
-  font-weight: 650;
-  text-align: left;
-}
-
-.mode-row .secondary-mode {
-  min-height: 32px;
-  padding: 0 12px;
-  color: var(--muted);
-  background: transparent;
   font-size: 12px;
-}
-
-.mode-row .secondary-mode span {
-  width: 18px;
-  height: 18px;
-  font-size: 14px;
+  font-weight: 520;
+  text-align: left;
 }
 
 .mode-row button span {
   display: grid;
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   place-items: center;
   border-radius: 50%;
   background: transparent;
@@ -283,7 +271,7 @@ footer button {
   border-radius: 16px;
   color: var(--text);
   background: var(--control);
-  font-weight: 650;
+  font-weight: 520;
   border: 0;
 }
 
@@ -351,17 +339,9 @@ footer button:hover {
   white-space: nowrap;
 }
 
-.camera-field .device-options {
-  display: none;
-}
-
-.camera-field:hover .device-options {
-  display: grid;
-}
-
 .device-main strong {
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 550;
 }
 
 .device-main small {
@@ -386,7 +366,7 @@ footer button:hover {
   color: #fff;
   background: #43c7bd;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 520;
   cursor: pointer;
 }
 
@@ -401,17 +381,8 @@ footer button:hover {
 }
 
 .device-options {
-  position: absolute;
-  top: calc(100% + 8px);
-  left: 8px;
-  right: 8px;
-  z-index: 10;
-  grid-column: 1 / -1;
+  display: grid;
   gap: 6px;
-  padding: 7px;
-  border-radius: 18px;
-  background: #fff;
-  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.22);
 }
 
 .mini-actions {
@@ -434,6 +405,7 @@ footer button:hover {
   background: #f4f5f8;
   border: 0;
   font-size: 12px;
+  font-weight: 520;
   white-space: nowrap;
   cursor: pointer;
   transition: background 140ms ease, color 140ms ease, transform 140ms ease;
@@ -468,23 +440,24 @@ footer button:hover {
 
 .settings-section {
   margin-top: 8px;
-  padding: 8px;
+  padding: 0;
   border-radius: 18px;
-  background: #f7f8fb;
+  background: transparent;
   display: grid;
   gap: 7px;
 }
 
 .setting-row {
   position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: center;
-  min-height: 44px;
-  padding: 6px 6px 6px 8px;
-  border-radius: 15px;
-  background: #fff;
+  display: block;
+  min-height: 46px;
+  padding: 0;
+  border-radius: 18px;
+  background: transparent;
+}
+
+.camera-field {
+  margin-top: 10px;
 }
 
 .section-label {
@@ -492,16 +465,16 @@ footer button:hover {
   padding: 0;
   color: var(--muted);
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .setting-row strong {
   display: block;
   overflow: hidden;
-  max-width: 120px;
+  max-width: 172px;
   color: var(--text);
   font-size: 13px;
-  font-weight: 750;
+  font-weight: 550;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -510,35 +483,64 @@ footer button:hover {
   position: relative;
 }
 
+.setting-select-button,
 .dropdown-trigger {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-width: 92px;
-  min-height: 32px;
-  padding: 0 10px;
-  border-radius: 999px;
-  color: #fff;
-  background: linear-gradient(135deg, #007aff, #6554ff);
-  box-shadow: 0 8px 18px rgba(0, 122, 255, 0.18);
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 46px;
+  padding: 8px 12px;
+  border-radius: 18px;
+  color: var(--text);
+  background: #f4f5f8;
+  box-shadow: none;
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 520;
   white-space: nowrap;
+  text-align: left;
+}
+
+.setting-select-button:hover,
+.dropdown-trigger:hover {
+  background: #eef0f6;
+}
+
+.setting-select-button > div {
+  min-width: 0;
+}
+
+.setting-select-button .device-icon {
+  flex: 0 0 auto;
+}
+
+.setting-select-button b,
+.dropdown-trigger b {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  color: #6554ff;
+  background: #e9e6ff;
+  font-size: 13px;
+  line-height: 1;
 }
 
 .dropdown-trigger b {
-  font-size: 12px;
-  line-height: 1;
+  font-size: 13px;
 }
 
 .dropdown-menu {
   position: absolute;
   top: calc(100% + 8px);
+  left: 0;
   right: 0;
   z-index: 30;
   display: grid;
-  min-width: 148px;
+  min-width: 100%;
   gap: 5px;
   padding: 7px;
   border-radius: 18px;
@@ -557,7 +559,7 @@ footer button:hover {
   background: transparent;
   text-align: left;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .dropdown-menu button:hover {
@@ -576,7 +578,7 @@ footer button:hover {
 .dropdown-menu button small {
   color: var(--muted);
   font-size: 11px;
-  font-weight: 650;
+  font-weight: 500;
 }
 
 .dropdown-menu button.selected small {
@@ -589,7 +591,11 @@ footer button:hover {
 }
 
 .save-menu {
-  min-width: 208px;
+  min-width: 100%;
+}
+
+.camera-menu {
+  min-width: 100%;
 }
 
 .folder-row {
@@ -618,7 +624,7 @@ footer button:hover {
   max-width: 172px;
   color: var(--text);
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 550;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -635,7 +641,7 @@ footer button:hover {
 .icon-action {
   color: #6554ff;
   font-size: 16px;
-  font-weight: 850;
+  font-weight: 600;
 }
 
 .folder-button:hover,
@@ -648,6 +654,7 @@ footer button:hover {
   border-radius: 999px;
   background: #ff5b45;
   color: #fff;
+  font-weight: 600;
 }
 
 #restartBtn,
@@ -788,7 +795,7 @@ footer button {
   border-radius: 999px;
   color: #525866;
   background: #f1f2f6;
-  font-weight: 650;
+  font-weight: 600;
   font-size: 12px;
   transition: background 140ms ease, color 140ms ease, transform 140ms ease;
 }
@@ -833,7 +840,7 @@ body:not(.drawing-enabled) #drawCanvas {
   place-items: center;
   color: #fff;
   font-size: 132px;
-  font-weight: 950;
+  font-weight: 700;
   background: rgba(0, 0, 0, 0.24);
   pointer-events: none;
 }
@@ -872,6 +879,19 @@ body:not(.drawing-enabled) #drawCanvas {
   border-radius: 14px;
   background: rgba(0, 122, 255, 0.12);
   box-shadow: 0 0 0 9999px rgba(8, 10, 16, 0.42), 0 18px 50px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+}
+
+.recording-region-mask {
+  position: absolute;
+  left: 100px;
+  top: 100px;
+  z-index: 9;
+  width: 520px;
+  height: 320px;
+  border: 2px solid rgba(255, 255, 255, 0.78);
+  border-radius: 14px;
+  box-shadow: 0 0 0 9999px rgba(4, 6, 12, 0.48), 0 18px 50px rgba(0, 0, 0, 0.2);
   pointer-events: none;
 }
 
@@ -921,7 +941,7 @@ body:not(.drawing-enabled) #drawCanvas {
   color: #171a22;
   background: #f1f2f6;
   font-size: 17px;
-  font-weight: 850;
+  font-weight: 650;
   line-height: 1;
 }
 

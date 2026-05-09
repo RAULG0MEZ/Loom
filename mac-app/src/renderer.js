@@ -1,4 +1,6 @@
 const cameraButtons = document.querySelector('#cameraButtons');
+const cameraDropdownBtn = document.querySelector('#cameraDropdownBtn');
+const cameraMenu = document.querySelector('#cameraMenu');
 const cameraTestBtn = document.querySelector('#cameraTestBtn');
 const cameraName = document.querySelector('#cameraName');
 const cameraHint = document.querySelector('#cameraHint');
@@ -7,6 +9,7 @@ const controlPanel = document.querySelector('#controlPanel');
 const dragHandle = document.querySelector('#dragHandle');
 const areaSelectionLayer = document.querySelector('#areaSelectionLayer');
 const areaSelectionBox = document.querySelector('#areaSelectionBox');
+const recordingRegionMask = document.querySelector('#recordingRegionMask');
 
 const screenVideo = document.querySelector('#screenVideo');
 const cameraVideo = document.querySelector('#cameraVideo');
@@ -60,7 +63,7 @@ const quitBtn = document.querySelector('#quitBtn');
 const cornerQuitBtn = document.querySelector('#cornerQuitBtn');
 
 let cameraDevices = [];
-let mode = 'screenCamera';
+let mode = 'screenOnly';
 let screenStream;
 let cameraStream;
 let micStream;
@@ -94,6 +97,7 @@ let cameraSizePreset = 'medium';
 let cameraToolbarCloseTimer;
 let captureRegion = null;
 let areaSelectionState = null;
+let startAfterAreaSelection = false;
 
 systemAudioToggle.checked = false;
 systemAudioToggle.disabled = true;
@@ -112,7 +116,7 @@ async function requestStartupPermissions() {
 
   try {
     await loadCameraDevices();
-    if (mode !== 'screenOnly' && cameraToggle.checked) await ensureCameraPreview();
+    if (cameraToggle.checked) await ensureCameraPreview();
   } catch (error) {
     console.error(error);
     showToast('No pude encender la cámara. Revisa permisos de Cámara en macOS.');
@@ -191,7 +195,6 @@ function setQuality(value) {
   qualitySelect.value = next;
   const label = labels[next];
   if (qualityLabel) qualityLabel.textContent = label;
-  if (qualityDropdownBtn) qualityDropdownBtn.querySelector('span').textContent = label;
   qualityButtons.forEach((button) => button.classList.toggle('selected', button.dataset.quality === next));
 }
 
@@ -199,7 +202,6 @@ function updateSaveUi() {
   const isCloud = saveTarget === 'cloud' && cloudflareConfigured;
   const label = isCloud ? 'Cloudflare Stream' : 'Local';
   if (saveTargetLabel) saveTargetLabel.textContent = label;
-  if (saveTargetBtn) saveTargetBtn.querySelector('span').textContent = label;
   if (localFolderName) localFolderName.textContent = localSaveDirName || folderName(localSaveDir) || 'Carpeta local';
   if (localFolderPath) localFolderPath.textContent = compactPath(localSaveDir);
   if (localTargetStatus) localTargetStatus.textContent = localSaveDirName || 'En carpeta';
@@ -237,7 +239,7 @@ function toggleDropdown(menu) {
 }
 
 function closeDropdowns() {
-  [qualityMenu, saveTargetMenu].forEach((menu) => {
+  [qualityMenu, saveTargetMenu, cameraMenu].forEach((menu) => {
     if (menu) menu.classList.add('hidden');
   });
 }
@@ -247,8 +249,13 @@ async function loadCameraDevices() {
   const devices = await navigator.mediaDevices.enumerateDevices();
   cameraDevices = devices.filter((device) => device.kind === 'videoinput');
   if (cameraDevices.length === 0) {
-    cameraButtons.innerHTML = '<button class="camera-device empty" disabled>Sin cámaras detectadas</button>';
+    cameraToggle.checked = false;
+    selectedCameraId = '';
+    cameraName.textContent = 'Sin cámara';
+    cameraHint.textContent = 'No se grabará cámara';
+    cameraButtons.innerHTML = '<button class="camera-device selected" data-camera-option="none">Sin cámara</button><button class="camera-device empty" disabled>Sin cámaras detectadas</button>';
     cameraTestBtn.disabled = true;
+    setCameraOverlayVisible(false);
     return;
   }
 
@@ -260,6 +267,7 @@ async function loadCameraDevices() {
     const preferred = pickPreferredCamera(cameraDevices);
     selectedCameraId = preferred ? preferred.deviceId : cameraDevices[0].deviceId;
   }
+  if (!selectedCameraId) cameraToggle.checked = false;
   renderCameraButtons();
 }
 
@@ -279,15 +287,20 @@ function escapeHtml(value) {
 }
 
 function setMode(nextMode) {
-  mode = nextMode;
+  mode = nextMode === 'customArea' ? 'customArea' : 'screenOnly';
   modeButtons.forEach((button) => button.classList.toggle('selected', button.dataset.mode === mode));
-  cameraToggle.disabled = mode === 'cameraOnly';
-  cameraToggle.checked = mode !== 'screenOnly';
-  syncSwitchLabels();
-  setCameraOverlayVisible(mode !== 'screenOnly' && cameraToggle.checked);
-  if (mode === 'screenOnly') stopCameraPreview();
-  if (mode === 'customArea') showAreaSelection();
-  else hideAreaSelection();
+  setCameraOverlayVisible(cameraToggle.checked);
+  if (!cameraToggle.checked) stopCameraPreview();
+  if (mode === 'customArea') {
+    captureRegion = null;
+    startAfterAreaSelection = true;
+    showAreaSelection();
+  } else {
+    startAfterAreaSelection = false;
+    captureRegion = null;
+    hideAreaSelection();
+    hideRecordingRegionMask();
+  }
 }
 
 async function ensureCameraPreview() {
@@ -314,19 +327,17 @@ async function ensureCameraPreview() {
 }
 
 async function getStreams() {
-  if (mode !== 'cameraOnly') {
-    const quality = Number(qualitySelect.value);
-    try {
-      screenStream = await getScreenCaptureStream(quality, 30);
-    } catch (error) {
-      await window.loomLocal.showPermissionHelp();
-      throw new Error('macOS no dejó iniciar la captura. Activa Loom en Configuración del Sistema > Privacidad y seguridad > Grabación de audio del sistema y pantalla. Después cierra Loom por completo y ábrela otra vez desde Aplicaciones.');
-    }
-    screenVideo.srcObject = screenStream;
-    await screenVideo.play();
+  const quality = Number(qualitySelect.value);
+  try {
+    screenStream = await getScreenCaptureStream(quality, 30);
+  } catch (error) {
+    await window.loomLocal.showPermissionHelp();
+    throw new Error('macOS no dejó iniciar la captura. Activa Loom en Configuración del Sistema > Privacidad y seguridad > Grabación de audio del sistema y pantalla. Después cierra Loom por completo y ábrela otra vez desde Aplicaciones.');
   }
+  screenVideo.srcObject = screenStream;
+  await screenVideo.play();
 
-  if (mode === 'cameraOnly' || ((mode === 'screenCamera' || mode === 'customArea') && cameraToggle.checked)) {
+  if (cameraToggle.checked) {
     try {
       await ensureCameraPreview();
     } catch (error) {
@@ -371,7 +382,7 @@ function sizeRecordingCanvas() {
     const ratio = captureRegion.width / captureRegion.height || 16 / 9;
     recordCanvas.width = Math.round(quality * ratio);
     recordCanvas.height = quality;
-  } else if (mode !== 'cameraOnly' && screenVideo.videoWidth && screenVideo.videoHeight) {
+  } else if (screenVideo.videoWidth && screenVideo.videoHeight) {
     const ratio = screenVideo.videoWidth / screenVideo.videoHeight || 16 / 9;
     recordCanvas.width = Math.round(quality * ratio);
     recordCanvas.height = quality;
@@ -404,15 +415,13 @@ function startCanvasLoop() {
     ctx.fillStyle = '#111417';
     ctx.fillRect(0, 0, width, height);
 
-    if (mode === 'cameraOnly' && cameraVideo.readyState >= 2) {
-      drawCover(cameraVideo, 0, 0, width, height, true);
-    } else if (mode === 'customArea' && captureRegion && screenVideo.readyState >= 2) {
+    if (mode === 'customArea' && captureRegion && screenVideo.readyState >= 2) {
       drawSelectedScreenRegion();
     } else if (screenVideo.readyState >= 2) {
       drawCover(screenVideo, 0, 0, width, height, false);
     }
 
-    if ((mode === 'screenCamera' || mode === 'customArea') && cameraToggle.checked && cameraVideo.readyState >= 2) {
+    if (cameraToggle.checked && cameraVideo.readyState >= 2) {
       drawCameraOverlay();
     }
 
@@ -562,7 +571,11 @@ function playRecordCue(type) {
 async function startRecording() {
   try {
     if (isRecording) return;
-    if (mode === 'customArea' && !captureRegion) captureRegion = getDefaultCaptureRegion();
+    if (mode === 'customArea' && !captureRegion) {
+      startAfterAreaSelection = true;
+      showAreaSelection();
+      return;
+    }
     drawToggle.checked = false;
     document.body.classList.remove('drawing-enabled');
     clearDrawing();
@@ -590,6 +603,7 @@ async function startRecording() {
     startedAt = Date.now();
     timerId = setInterval(updateTimer, 250);
     setRecordingUi(true);
+    if (mode === 'customArea') showRecordingRegionMask();
     window.loomLocal.setRecordingState({ isRecording: true, isPaused: false });
     playRecordCue('start');
   } catch (error) {
@@ -757,7 +771,7 @@ function cleanup() {
   [screenStream, micStream, mixedStream].forEach((stream) => {
     if (stream) stream.getTracks().forEach((track) => track.stop());
   });
-  if (mode !== 'screenCamera' && mode !== 'customArea') stopCameraPreview();
+  if (!cameraToggle.checked) stopCameraPreview();
   if (audioContext) audioContext.close();
   audioContext = null;
   screenStream = null;
@@ -766,6 +780,7 @@ function cleanup() {
   mediaRecorder = null;
   screenVideo.srcObject = null;
   clearDrawing();
+  hideRecordingRegionMask();
   setRecordingUi(false);
 }
 
@@ -786,17 +801,26 @@ function stopCameraPreview() {
 }
 
 async function switchCamera(deviceId) {
+  if (!deviceId || deviceId === 'none') {
+    cameraToggle.checked = false;
+    stopCameraPreview();
+    setCameraOverlayVisible(false);
+    renderCameraButtons();
+    return;
+  }
+
   stopCameraPreview();
-  if (typeof deviceId === 'string' && deviceId) selectedCameraId = deviceId;
+  cameraToggle.checked = true;
+  selectedCameraId = deviceId;
   renderCameraButtons();
-  if (mode !== 'screenOnly' && cameraToggle.checked) {
-    try {
-      await ensureCameraPreview();
-      setCameraOverlayVisible(true);
-    } catch (error) {
-      setCameraOverlayVisible(false);
-      showToast(`No pude abrir esa cámara: ${error.message}`);
-    }
+  try {
+    await ensureCameraPreview();
+    setCameraOverlayVisible(true);
+  } catch (error) {
+    cameraToggle.checked = false;
+    setCameraOverlayVisible(false);
+    renderCameraButtons();
+    showToast(`No pude abrir esa cámara: ${error.message}`);
   }
 }
 
@@ -895,17 +919,17 @@ function showToast(message) {
 function renderCameraButtons() {
   if (cameraDevices.length === 0) return;
   const selectedDevice = cameraDevices.find((device) => device.deviceId === selectedCameraId);
-  cameraName.textContent = selectedDevice ? (selectedDevice.label || 'Cámara') : 'Cámara';
-  cameraHint.textContent = cameraDevices.length > 1 ? 'Clic para cambiar' : 'Lista para grabar';
-  if (cameraDevices.length <= 1) {
-    cameraButtons.innerHTML = '';
-    return;
-  }
-  cameraButtons.innerHTML = cameraDevices.map((device, index) => {
+  const cameraEnabled = Boolean(cameraToggle.checked && selectedDevice);
+  cameraName.textContent = cameraEnabled ? (selectedDevice.label || 'Cámara') : 'Sin cámara';
+  cameraHint.textContent = cameraEnabled ? 'Se grabará tu burbuja' : 'Sólo pantalla';
+  setCameraOverlayVisible(cameraEnabled);
+  const noCameraButton = `<button class="camera-device${cameraEnabled ? '' : ' selected'}" data-camera-option="none">Sin cámara</button>`;
+  const cameraOptions = cameraDevices.map((device, index) => {
     const label = escapeHtml(device.label || `Cámara ${index + 1}`);
-    const selected = device.deviceId === selectedCameraId ? ' selected' : '';
+    const selected = cameraEnabled && device.deviceId === selectedCameraId ? ' selected' : '';
     return `<button class="camera-device${selected}" data-camera-id="${escapeHtml(device.deviceId)}">${label}</button>`;
   }).join('');
+  cameraButtons.innerHTML = `${noCameraButton}${cameraOptions}`;
 }
 
 function setCameraOverlayVisible(visible) {
@@ -1003,10 +1027,12 @@ function getDefaultCaptureRegion() {
 
 function renderCaptureRegion() {
   if (!areaSelectionBox || !captureRegion) return;
+  areaSelectionBox.classList.remove('hidden');
   areaSelectionBox.style.left = `${captureRegion.left}px`;
   areaSelectionBox.style.top = `${captureRegion.top}px`;
   areaSelectionBox.style.width = `${captureRegion.width}px`;
   areaSelectionBox.style.height = `${captureRegion.height}px`;
+  renderRecordingRegionMask();
   syncDrawCanvasFrame();
 }
 
@@ -1025,8 +1051,8 @@ function normalizeCaptureRegion(startX, startY, endX, endY) {
 
 function showAreaSelection() {
   if (!areaSelectionLayer) return;
-  if (!captureRegion) captureRegion = getDefaultCaptureRegion();
-  renderCaptureRegion();
+  if (captureRegion) renderCaptureRegion();
+  else areaSelectionBox.classList.add('hidden');
   areaSelectionLayer.classList.remove('hidden');
   document.body.classList.add('selecting-area');
   if (window.loomLocal) window.loomLocal.setMousePassthrough(false);
@@ -1056,17 +1082,41 @@ function moveAreaSelection(event) {
   renderCaptureRegion();
 }
 
-function endAreaSelection() {
+async function endAreaSelection() {
   if (!areaSelectionState) return;
   areaSelectionState = null;
   if (!captureRegion || captureRegion.width < 90 || captureRegion.height < 70) {
-    captureRegion = getDefaultCaptureRegion();
-    renderCaptureRegion();
+    captureRegion = null;
+    areaSelectionBox.classList.add('hidden');
     showToast('Selecciona un área más grande');
     return;
   }
   hideAreaSelection();
-  showToast('Área seleccionada');
+  showRecordingRegionMask();
+  if (startAfterAreaSelection) {
+    startAfterAreaSelection = false;
+    await startRecording();
+  } else {
+    showToast('Área seleccionada');
+  }
+}
+
+function renderRecordingRegionMask() {
+  if (!recordingRegionMask || !captureRegion) return;
+  recordingRegionMask.style.left = `${captureRegion.left}px`;
+  recordingRegionMask.style.top = `${captureRegion.top}px`;
+  recordingRegionMask.style.width = `${captureRegion.width}px`;
+  recordingRegionMask.style.height = `${captureRegion.height}px`;
+}
+
+function showRecordingRegionMask() {
+  if (!recordingRegionMask || mode !== 'customArea' || !captureRegion) return;
+  renderRecordingRegionMask();
+  recordingRegionMask.classList.remove('hidden');
+}
+
+function hideRecordingRegionMask() {
+  if (recordingRegionMask) recordingRegionMask.classList.add('hidden');
 }
 
 function keepCameraToolbarOpen() {
@@ -1173,6 +1223,7 @@ qualityButtons.forEach((button) => button.addEventListener('click', () => {
 }));
 if (qualityDropdownBtn) qualityDropdownBtn.addEventListener('click', () => toggleDropdown(qualityMenu));
 if (saveTargetBtn) saveTargetBtn.addEventListener('click', () => toggleDropdown(saveTargetMenu));
+if (cameraDropdownBtn) cameraDropdownBtn.addEventListener('click', () => toggleDropdown(cameraMenu));
 saveTargetButtons.forEach((button) => button.addEventListener('click', async () => {
   await setSaveTarget(button.dataset.saveTarget);
   closeDropdowns();
@@ -1230,14 +1281,23 @@ cornerQuitBtn.addEventListener('pointerdown', (event) => {
 window.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') requestQuit();
 });
-cameraTestBtn.addEventListener('click', switchCamera);
+cameraTestBtn.addEventListener('click', () => switchCamera(selectedCameraId || cameraDevices[0]?.deviceId));
 cameraButtons.addEventListener('click', (event) => {
+  const noCameraButton = event.target.closest('[data-camera-option="none"]');
+  if (noCameraButton) {
+    switchCamera('none');
+    closeDropdowns();
+    return;
+  }
   const button = event.target.closest('[data-camera-id]');
-  if (button) switchCamera(button.dataset.cameraId);
+  if (button) {
+    switchCamera(button.dataset.cameraId);
+    closeDropdowns();
+  }
 });
 cameraToggle.addEventListener('change', async () => {
   syncSwitchLabels();
-  const visible = mode !== 'screenOnly' && cameraToggle.checked;
+  const visible = cameraToggle.checked;
   setCameraOverlayVisible(visible);
   if (visible) {
     try {
@@ -1251,6 +1311,7 @@ cameraToggle.addEventListener('change', async () => {
   } else {
     stopCameraPreview();
   }
+  renderCameraButtons();
 });
 micToggle.addEventListener('change', syncSwitchLabels);
 drawToggle.addEventListener('change', () => {
