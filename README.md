@@ -51,3 +51,28 @@ Mientras Cloudflare procesa el video, la app abre:
 ```text
 https://raulg0mez.github.io/Loom/?video=<CLOUDFLARE_STREAM_UID>&status=uploading
 ```
+
+## Borrar videos desde la biblioteca
+
+La pagina no debe exponer el token de Cloudflare Stream en el navegador. Por eso el borrado pasa por un Cloudflare Worker en `cloudflare-worker/`.
+
+El token que despliega el Worker necesita estos permisos:
+
+- Account > Workers Scripts > Edit
+- Account > Account Settings > Read
+- User > User Details > Read
+
+Configurar secretos y desplegar:
+
+```bash
+cd cloudflare-worker
+npx wrangler secret put CLOUDFLARE_STREAM_API_TOKEN
+npx wrangler secret put DELETE_PASSCODE
+npx wrangler deploy
+```
+
+Despues copia la URL del Worker en `config.js` como `deleteApiUrl`, por ejemplo:
+
+```js
+deleteApiUrl: 'https://loom-video-admin.<tu-subdominio>.workers.dev/delete'
+```

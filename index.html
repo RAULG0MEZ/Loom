@@ -33,6 +33,25 @@
       </section>
     </main>
 
+    <div id="deleteModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="deleteTitle">
+      <div class="modal-panel">
+        <span class="eyebrow">Eliminar video</span>
+        <h2 id="deleteTitle">¿Seguro que deseas eliminar este video?</h2>
+        <p id="deleteVideoTitle">Esta acción borra el archivo de Cloudflare Stream.</p>
+        <label class="delete-passcode">
+          <span>Clave de borrado</span>
+          <input id="deletePasscode" type="password" autocomplete="current-password" placeholder="Sólo se pide una vez">
+        </label>
+        <div id="deleteError" class="delete-error hidden"></div>
+        <div class="modal-actions">
+          <button id="cancelDeleteBtn" type="button">Cancelar</button>
+          <button id="confirmDeleteBtn" class="danger-action" type="button">Sí, borrar</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
     <script src="./config.js"></script>
     <script src="./app.js"></script>
   </body>

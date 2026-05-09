@@ -1,0 +1,7 @@
+name = "loom-video-admin"
+main = "worker.js"
+compatibility_date = "2026-05-01"
+
+[vars]
+CLOUDFLARE_ACCOUNT_ID = "c28073b0744c0d0c967d647e846d6702"
+ALLOWED_ORIGINS = "https://raulg0mez.github.io,http://127.0.0.1:4173,http://127.0.0.1:4321,http://localhost:4173,http://localhost:4321"

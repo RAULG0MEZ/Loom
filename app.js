@@ -1,10 +1,21 @@
 const config = window.LOOM_LIBRARY_CONFIG || {};
 const streamHost = config.streamHost || '';
+const deleteApiUrl = config.deleteApiUrl || '';
 const grid = document.querySelector('#videoGrid');
 const emptyState = document.querySelector('#emptyState');
 const libraryMeta = document.querySelector('#libraryMeta');
 const currentVideo = document.querySelector('#currentVideo');
 const refreshBtn = document.querySelector('#refreshBtn');
+const deleteModal = document.querySelector('#deleteModal');
+const deleteVideoTitle = document.querySelector('#deleteVideoTitle');
+const deletePasscode = document.querySelector('#deletePasscode');
+const deleteError = document.querySelector('#deleteError');
+const cancelDeleteBtn = document.querySelector('#cancelDeleteBtn');
+const confirmDeleteBtn = document.querySelector('#confirmDeleteBtn');
+const toast = document.querySelector('#toast');
+
+let pendingDelete = null;
+let currentVideoUid = '';
 
 function formatDate(value) {
   if (!value) return 'Sin fecha';
@@ -39,21 +50,49 @@ function videoUrls(uid) {
   };
 }
 
+function deletedUids() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem('loomDeletedUids') || '[]'));
+  } catch {
+    return new Set();
+  }
+}
+
+function rememberDeletedUid(uid) {
+  const uids = deletedUids();
+  uids.add(uid);
+  localStorage.setItem('loomDeletedUids', JSON.stringify([...uids]));
+}
+
+function showToast(message) {
+  toast.textContent = message;
+  toast.classList.remove('hidden');
+  clearTimeout(showToast.timer);
+  showToast.timer = setTimeout(() => toast.classList.add('hidden'), 2400);
+}
+
+function deleteAction(uid, title) {
+  if (!deleteApiUrl) return '';
+  return `<button class="danger-action" type="button" data-delete="${escapeHtml(uid)}" data-title="${escapeHtml(title)}">Eliminar</button>`;
+}
+
 function cardTemplate(video) {
   const urls = videoUrls(video.uid);
   const title = video.title || video.name || 'Grabacion LoomLocal';
+  const safeTitle = escapeHtml(title);
   return `
-    <article class="video-card">
+    <article class="video-card" data-video-uid="${escapeHtml(video.uid)}">
       <a class="thumb" href="${urls.watch}" target="_blank" rel="noreferrer">
         <img src="${video.thumbnail || urls.thumbnail}" alt="">
         <span>${formatDuration(video.duration)}</span>
       </a>
       <div class="video-info">
-        <strong>${title}</strong>
+        <strong>${safeTitle}</strong>
         <small>${formatDate(video.created)}</small>
         <div class="video-actions">
           <a href="${urls.watch}" target="_blank" rel="noreferrer">Ver</a>
           <button type="button" data-copy="${urls.watch}">Copiar link</button>
+          ${deleteAction(video.uid, title)}
         </div>
       </div>
     </article>`;
@@ -61,6 +100,7 @@ function cardTemplate(video) {
 
 function renderCurrentVideo(uid, status = '', title = '') {
   if (!uid || !streamHost) return;
+  currentVideoUid = uid;
   const urls = videoUrls(uid);
   const pending = status === 'uploading' || status === 'processing';
   const heading = status === 'uploading'
@@ -81,6 +121,7 @@ function renderCurrentVideo(uid, status = '', title = '') {
       <div class="video-actions">
         <a href="${urls.watch}" target="_blank" rel="noreferrer">Abrir video</a>
         <button type="button" data-copy="${urls.watch}">Copiar link</button>
+        ${deleteAction(uid, title || 'Video recién grabado')}
       </div>
     </div>
     <div class="player-shell ${pending ? 'is-loading' : ''}">
@@ -106,7 +147,8 @@ async function loadVideos() {
     const response = await fetch(`./videos.json?ts=${Date.now()}`, { cache: 'no-store' });
     if (!response.ok) throw new Error('No videos.json');
     const payload = await response.json();
-    const videos = Array.isArray(payload.videos) ? payload.videos : [];
+    const hidden = deletedUids();
+    const videos = (Array.isArray(payload.videos) ? payload.videos : []).filter((video) => !hidden.has(video.uid));
     grid.innerHTML = videos.map(cardTemplate).join('');
     emptyState.classList.toggle('hidden', videos.length > 0);
     libraryMeta.textContent = videos.length
@@ -120,17 +162,120 @@ async function loadVideos() {
   }
 }
 
+function openDeleteModal(uid, title) {
+  pendingDelete = { uid, title };
+  const savedPasscode = localStorage.getItem('loomDeletePasscode') || '';
+  deleteVideoTitle.textContent = title
+    ? `"${title}" se borrará de Cloudflare Stream.`
+    : 'Este video se borrará de Cloudflare Stream.';
+  deleteError.textContent = '';
+  deleteError.classList.add('hidden');
+  deletePasscode.value = savedPasscode;
+  deleteModal.classList.toggle('has-saved-passcode', Boolean(savedPasscode));
+  confirmDeleteBtn.disabled = false;
+  confirmDeleteBtn.textContent = 'Sí, borrar';
+  deleteModal.classList.remove('hidden');
+  if (!savedPasscode) setTimeout(() => deletePasscode.focus(), 60);
+}
+
+function closeDeleteModal() {
+  pendingDelete = null;
+  deleteModal.classList.add('hidden');
+}
+
+function removeVideoFromView(uid) {
+  document.querySelectorAll(`[data-video-uid="${CSS.escape(uid)}"]`).forEach((node) => node.remove());
+  if (currentVideoUid === uid) {
+    currentVideo.classList.add('hidden');
+    currentVideo.innerHTML = '';
+    currentVideoUid = '';
+  }
+
+  const count = grid.querySelectorAll('.video-card').length;
+  emptyState.classList.toggle('hidden', count > 0);
+  libraryMeta.textContent = count
+    ? `${count} videos - actualizado ahora`
+    : 'Sin videos publicados todavía';
+}
+
+async function confirmDelete() {
+  if (!pendingDelete) return;
+
+  if (!deleteApiUrl) {
+    deleteError.textContent = 'La API de borrado todavía no está configurada.';
+    deleteError.classList.remove('hidden');
+    return;
+  }
+
+  const passcode = deletePasscode.value.trim();
+  if (!passcode) {
+    deleteError.textContent = 'Escribe la clave de borrado.';
+    deleteError.classList.remove('hidden');
+    deletePasscode.focus();
+    return;
+  }
+
+  confirmDeleteBtn.disabled = true;
+  confirmDeleteBtn.textContent = 'Borrando...';
+  deleteError.classList.add('hidden');
+
+  let response;
+  try {
+    response = await fetch(deleteApiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uid: pendingDelete.uid, passcode })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.ok === false) {
+      throw new Error(payload.error || 'No pude borrar el video');
+    }
+
+    localStorage.setItem('loomDeletePasscode', passcode);
+    rememberDeletedUid(pendingDelete.uid);
+    removeVideoFromView(pendingDelete.uid);
+    closeDeleteModal();
+    showToast('Video eliminado de Cloudflare');
+  } catch (error) {
+    deleteError.textContent = error.message || 'No pude borrar el video';
+    deleteError.classList.remove('hidden');
+    if (response?.status === 401) {
+      localStorage.removeItem('loomDeletePasscode');
+      deletePasscode.value = '';
+      deleteModal.classList.remove('has-saved-passcode');
+      deletePasscode.focus();
+    }
+    confirmDeleteBtn.disabled = false;
+    confirmDeleteBtn.textContent = 'Sí, borrar';
+  }
+}
+
 document.addEventListener('click', async (event) => {
-  const button = event.target.closest('[data-copy]');
-  if (!button) return;
-  await navigator.clipboard.writeText(button.dataset.copy);
-  button.textContent = 'Copiado';
-  setTimeout(() => {
-    button.textContent = 'Copiar link';
-  }, 1400);
+  const copyButton = event.target.closest('[data-copy]');
+  if (copyButton) {
+    await navigator.clipboard.writeText(copyButton.dataset.copy);
+    copyButton.textContent = 'Copiado';
+    setTimeout(() => {
+      copyButton.textContent = 'Copiar link';
+    }, 1400);
+    return;
+  }
+
+  const deleteButton = event.target.closest('[data-delete]');
+  if (deleteButton) {
+    openDeleteModal(deleteButton.dataset.delete, deleteButton.dataset.title || 'Video');
+  }
 });
 
 refreshBtn.addEventListener('click', loadVideos);
+cancelDeleteBtn.addEventListener('click', closeDeleteModal);
+confirmDeleteBtn.addEventListener('click', confirmDelete);
+deleteModal.addEventListener('click', (event) => {
+  if (event.target === deleteModal) closeDeleteModal();
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !deleteModal.classList.contains('hidden')) closeDeleteModal();
+});
 
 const params = new URLSearchParams(window.location.search);
 renderCurrentVideo(params.get('video'), params.get('status'), params.get('title'));
