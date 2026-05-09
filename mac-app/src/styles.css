@@ -779,6 +779,51 @@ body.recording .settings-panel {
   line-height: 1.35;
 }
 
+.drive-location-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 16px;
+  background: #fff;
+}
+
+.drive-location-row span,
+.drive-location-row strong {
+  display: block;
+}
+
+.drive-location-row span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.drive-location-row strong {
+  overflow: hidden;
+  max-width: 142px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 560;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drive-location-row button {
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  color: #4d3fff;
+  background: #e9e6ff;
+  font-size: 11px;
+  font-weight: 560;
+}
+
+.drive-location-row button:hover {
+  background: #ded9ff;
+}
+
 .settings-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;

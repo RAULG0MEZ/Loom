@@ -61,6 +61,8 @@ Después cierra y abre la app otra vez.
 
 La app usa un OAuth Client de tipo Desktop con PKCE y un callback local temporal en `127.0.0.1`. No necesita dominio ni backend para Google. Cada usuario conecta su propia cuenta y los tokens quedan guardados sólo en su Mac.
 
+Para Google Drive, la app permite elegir entre guardar en `Mi unidad` o crear/reutilizar una carpeta `Loom` dentro del Drive del usuario.
+
 Scopes usados:
 
 - `https://www.googleapis.com/auth/drive.file`

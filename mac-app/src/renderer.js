@@ -62,6 +62,8 @@ const youtubeStatus = document.querySelector('#youtubeStatus');
 const driveSettingsStatus = document.querySelector('#driveSettingsStatus');
 const youtubeSettingsStatus = document.querySelector('#youtubeSettingsStatus');
 const googleAuthStatus = document.querySelector('#googleAuthStatus');
+const googleDriveLocation = document.querySelector('#googleDriveLocation');
+const chooseDriveLocationBtn = document.querySelector('#chooseDriveLocationBtn');
 const authorizeGoogleBtn = document.querySelector('#authorizeGoogleBtn');
 const disconnectGoogleBtn = document.querySelector('#disconnectGoogleBtn');
 const localFolderRow = document.querySelector('#localFolderRow');
@@ -352,6 +354,10 @@ function renderSettingsPanel() {
   if (googleAuthStatus) {
     googleAuthStatus.textContent = google.authorized ? 'Conectado' : 'Sin conectar';
   }
+  if (googleDriveLocation) {
+    googleDriveLocation.textContent = google.driveFolderName || 'Mi unidad';
+  }
+  if (chooseDriveLocationBtn) chooseDriveLocationBtn.disabled = !google.authorized;
   if (disconnectGoogleBtn) disconnectGoogleBtn.disabled = !google.authorized;
   updateSaveUi();
 }
@@ -376,6 +382,10 @@ async function authorizeGoogleFromUi() {
     const status = await window.loomLocal.authorizeGoogleCloud();
     applyCloudStatus(status);
     const nextProvider = cloudProvider === 'youtube' ? 'youtube' : 'googleDrive';
+    if (nextProvider === 'googleDrive' && window.loomLocal?.chooseGoogleDriveLocation) {
+      showToast('Elige ubicación en Google Drive...');
+      applyCloudStatus(await window.loomLocal.chooseGoogleDriveLocation());
+    }
     await setSaveTarget(nextProvider);
     closeSettingsPanel();
     closeDropdowns();
@@ -383,6 +393,19 @@ async function authorizeGoogleFromUi() {
   } catch (error) {
     console.error(error);
     alert(`No pude conectar Google: ${error.message}`);
+  }
+}
+
+async function chooseDriveLocationFromUi() {
+  if (!window.loomLocal?.chooseGoogleDriveLocation) return;
+  try {
+    const status = await window.loomLocal.chooseGoogleDriveLocation();
+    applyCloudStatus(status);
+    updateCloudUi();
+    showToast(`Google Drive guardará en ${status?.google?.driveFolderName || 'Mi unidad'}`);
+  } catch (error) {
+    console.error(error);
+    alert(`No pude cambiar ubicación de Drive: ${error.message}`);
   }
 }
 
@@ -1398,6 +1421,7 @@ if (cloudToggle) {
 if (settingsBtn) settingsBtn.addEventListener('click', openSettingsPanel);
 if (settingsCloseBtn) settingsCloseBtn.addEventListener('click', closeSettingsPanel);
 if (authorizeGoogleBtn) authorizeGoogleBtn.addEventListener('click', authorizeGoogleFromUi);
+if (chooseDriveLocationBtn) chooseDriveLocationBtn.addEventListener('click', chooseDriveLocationFromUi);
 if (disconnectGoogleBtn) disconnectGoogleBtn.addEventListener('click', disconnectGoogleFromUi);
 startBtn.addEventListener('click', startRecording);
 stopBtn.addEventListener('click', stopRecording);

@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('loomLocal', {
   saveGoogleCloudSettings: (payload) => ipcRenderer.invoke('cloud:saveGoogleSettings', payload),
   authorizeGoogleCloud: () => ipcRenderer.invoke('cloud:authorizeGoogle'),
   disconnectGoogleCloud: () => ipcRenderer.invoke('cloud:disconnectGoogle'),
+  chooseGoogleDriveLocation: () => ipcRenderer.invoke('cloud:chooseGoogleDriveLocation'),
   uploadToCloud: (payload) => ipcRenderer.invoke('cloud:upload', payload),
   cloudflareStatus: () => ipcRenderer.invoke('cloudflare:status'),
   uploadToCloudflare: (payload) => ipcRenderer.invoke('cloudflare:upload', payload),

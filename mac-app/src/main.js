@@ -430,14 +430,18 @@ async function readGoogleConfig() {
       clientId: googleDesktopClientId,
       refreshToken: sameClient ? String(saved.refreshToken || '').trim() : '',
       accessToken: sameClient ? String(saved.accessToken || '').trim() : '',
-      expiresAt: sameClient ? Number(saved.expiresAt || 0) : 0
+      expiresAt: sameClient ? Number(saved.expiresAt || 0) : 0,
+      driveFolderId: sameClient ? String(saved.driveFolderId || '').trim() : '',
+      driveFolderName: sameClient ? String(saved.driveFolderName || '').trim() : ''
     };
   } catch {
     return {
       clientId: googleDesktopClientId,
       refreshToken: '',
       accessToken: '',
-      expiresAt: 0
+      expiresAt: 0,
+      driveFolderId: '',
+      driveFolderName: ''
     };
   }
 }
@@ -447,7 +451,9 @@ async function writeGoogleConfig(config) {
     clientId: googleDesktopClientId,
     refreshToken: String(config.refreshToken || '').trim(),
     accessToken: String(config.accessToken || '').trim(),
-    expiresAt: Number(config.expiresAt || 0)
+    expiresAt: Number(config.expiresAt || 0),
+    driveFolderId: String(config.driveFolderId || '').trim(),
+    driveFolderName: String(config.driveFolderName || '').trim()
   };
   await fs.mkdir(app.getPath('userData'), { recursive: true });
   await fs.writeFile(getGoogleConfigPath(), JSON.stringify(next, null, 2), { mode: 0o600 });
@@ -458,7 +464,9 @@ function getGooglePublicStatus(config) {
   return {
     clientId: googleDesktopClientId,
     authorized: Boolean(config.refreshToken),
-    configured: Boolean(config.refreshToken)
+    configured: Boolean(config.refreshToken),
+    driveFolderId: config.driveFolderId || '',
+    driveFolderName: config.driveFolderName || 'Mi unidad'
   };
 }
 
@@ -701,6 +709,82 @@ async function getGoogleAccessToken() {
   return next.accessToken;
 }
 
+function escapeDriveQueryValue(value) {
+  return String(value).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+async function findGoogleDriveFolder(accessToken, name) {
+  const url = new URL('https://www.googleapis.com/drive/v3/files');
+  url.searchParams.set('spaces', 'drive');
+  url.searchParams.set('pageSize', '10');
+  url.searchParams.set('fields', 'files(id,name,webViewLink)');
+  url.searchParams.set('q', `mimeType='application/vnd.google-apps.folder' and trashed=false and name='${escapeDriveQueryValue(name)}'`);
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const detail = payload?.error?.message || response.statusText;
+    throw new Error(`No pude revisar carpetas de Google Drive: ${detail}`);
+  }
+  return payload?.files?.[0] || null;
+}
+
+async function createGoogleDriveFolder(accessToken, name) {
+  const response = await fetch('https://www.googleapis.com/drive/v3/files?fields=id,name,webViewLink', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json; charset=UTF-8'
+    },
+    body: JSON.stringify({
+      name,
+      mimeType: 'application/vnd.google-apps.folder'
+    })
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || !payload?.id) {
+    const detail = payload?.error?.message || response.statusText;
+    throw new Error(`No pude crear la carpeta en Google Drive: ${detail}`);
+  }
+  return payload;
+}
+
+async function setGoogleDriveFolder(folder) {
+  const config = await readGoogleConfig();
+  await writeGoogleConfig({
+    ...config,
+    driveFolderId: folder.id === 'root' ? 'root' : folder.id,
+    driveFolderName: folder.name || 'Mi unidad'
+  });
+  return getCloudStatus();
+}
+
+async function chooseGoogleDriveLocation() {
+  const config = await readGoogleConfig();
+  if (!config.refreshToken) {
+    throw new Error('Primero conecta Google.');
+  }
+
+  const result = await dialog.showMessageBox({
+    type: 'question',
+    title: 'Ubicacion en Google Drive',
+    message: 'Donde quieres guardar tus videos?',
+    detail: 'Loom puede crear/usar una carpeta "Loom" en tu Drive o guardar los videos directo en Mi unidad. Esta preferencia queda guardada en esta Mac.',
+    buttons: ['Carpeta Loom', 'Mi unidad', 'Luego'],
+    defaultId: 0,
+    cancelId: 2
+  });
+
+  if (result.response === 2) return getCloudStatus();
+  if (result.response === 1) return setGoogleDriveFolder({ id: 'root', name: 'Mi unidad' });
+
+  const accessToken = await getGoogleAccessToken();
+  const folder = await findGoogleDriveFolder(accessToken, 'Loom')
+    || await createGoogleDriveFolder(accessToken, 'Loom');
+  return setGoogleDriveFolder({ id: folder.id, name: folder.name || 'Loom' });
+}
+
 function getVideoMimeType(filePath) {
   return /\.webm$/i.test(filePath) ? 'video/webm' : 'video/mp4';
 }
@@ -754,12 +838,16 @@ async function curlUploadToGoogle(uploadUrl, accessToken, filePath, size, mimeTy
 async function uploadFileToGoogleDrive(payload) {
   const filePath = String(payload.filePath || '');
   const accessToken = await getGoogleAccessToken();
+  const config = await readGoogleConfig();
   const title = `${payload.title || path.basename(filePath, path.extname(filePath)) || 'Grabacion Loom'}.mp4`;
   const endpoint = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,webViewLink,webContentLink';
   const metadata = {
     name: title,
     mimeType: getVideoMimeType(filePath)
   };
+  if (config.driveFolderId && config.driveFolderId !== 'root') {
+    metadata.parents = [config.driveFolderId];
+  }
   const sessionInfo = await startGoogleResumableUpload({
     endpoint,
     accessToken,
@@ -990,6 +1078,7 @@ ipcMain.handle('cloud:status', async () => getCloudStatus());
 ipcMain.handle('cloud:saveGoogleSettings', async (_event, payload) => saveGoogleCloudSettings(payload));
 ipcMain.handle('cloud:authorizeGoogle', async () => authorizeGoogleCloud());
 ipcMain.handle('cloud:disconnectGoogle', async () => disconnectGoogleCloud());
+ipcMain.handle('cloud:chooseGoogleDriveLocation', async () => chooseGoogleDriveLocation());
 ipcMain.handle('cloud:upload', async (_event, payload) => uploadToSelectedCloud(payload));
 ipcMain.handle('cloudflare:upload', async (_event, payload) => uploadToSelectedCloud({ ...payload, provider: 'cloudflare' }));
 
