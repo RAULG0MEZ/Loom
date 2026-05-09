@@ -4,10 +4,17 @@ const { promisify } = require('util');
 const path = require('path');
 const fs = require('fs/promises');
 const os = require('os');
+const http = require('http');
+const crypto = require('crypto');
 
 const execFileAsync = promisify(execFile);
 const defaultRecordingsDir = path.join(os.homedir(), 'Desktop');
 const cloudUploadLimitBytes = 200 * 1024 * 1024;
+const cloudProviderIds = ['cloudflare', 'googleDrive', 'youtube'];
+const googleScopes = [
+  'https://www.googleapis.com/auth/drive.file',
+  'https://www.googleapis.com/auth/youtube.upload'
+];
 let recordingTray = null;
 let trayPulseTimer = null;
 let trayPulse = false;
@@ -86,9 +93,14 @@ function getSettingsPath() {
   return path.join(app.getPath('userData'), 'settings.json');
 }
 
+function normalizeCloudProvider(provider) {
+  return cloudProviderIds.includes(provider) ? provider : 'cloudflare';
+}
+
 async function readAppSettings() {
   const defaults = {
     saveTarget: 'local',
+    cloudProvider: 'cloudflare',
     recordingsDir: defaultRecordingsDir
   };
 
@@ -96,10 +108,11 @@ async function readAppSettings() {
     const raw = await fs.readFile(getSettingsPath(), 'utf8');
     const saved = JSON.parse(raw);
     const saveTarget = saved.saveTarget === 'cloud' ? 'cloud' : 'local';
+    const cloudProvider = normalizeCloudProvider(saved.cloudProvider);
     const recordingsDir = typeof saved.recordingsDir === 'string' && saved.recordingsDir.trim()
       ? saved.recordingsDir
       : defaultRecordingsDir;
-    return { ...defaults, saveTarget, recordingsDir };
+    return { ...defaults, saveTarget, cloudProvider, recordingsDir };
   } catch {
     return defaults;
   }
@@ -112,6 +125,7 @@ async function writeAppSettings(nextSettings) {
     ...nextSettings
   };
   settings.saveTarget = settings.saveTarget === 'cloud' ? 'cloud' : 'local';
+  settings.cloudProvider = normalizeCloudProvider(settings.cloudProvider);
   if (!settings.recordingsDir) settings.recordingsDir = defaultRecordingsDir;
   await fs.mkdir(app.getPath('userData'), { recursive: true });
   await fs.writeFile(getSettingsPath(), JSON.stringify(settings, null, 2));
@@ -127,6 +141,7 @@ function formatAppSettings(settings) {
   const recordingsDir = settings.recordingsDir || defaultRecordingsDir;
   return {
     saveTarget: settings.saveTarget === 'cloud' ? 'cloud' : 'local',
+    cloudProvider: normalizeCloudProvider(settings.cloudProvider),
     recordingsDir,
     recordingsDirName: path.basename(recordingsDir) || recordingsDir,
     defaultRecordingsDir
@@ -379,6 +394,422 @@ async function uploadFileToCloudflare(uploadURL, filePath) {
   ], { maxBuffer: 4 * 1024 * 1024 });
 }
 
+function getGoogleConfigPath() {
+  return path.join(app.getPath('userData'), 'google-cloud.json');
+}
+
+async function readGoogleConfig() {
+  try {
+    const raw = await fs.readFile(getGoogleConfigPath(), 'utf8');
+    const saved = JSON.parse(raw);
+    return {
+      clientId: String(saved.clientId || '').trim(),
+      clientSecret: String(saved.clientSecret || '').trim(),
+      refreshToken: String(saved.refreshToken || '').trim(),
+      accessToken: String(saved.accessToken || '').trim(),
+      expiresAt: Number(saved.expiresAt || 0)
+    };
+  } catch {
+    return {
+      clientId: '',
+      clientSecret: '',
+      refreshToken: '',
+      accessToken: '',
+      expiresAt: 0
+    };
+  }
+}
+
+async function writeGoogleConfig(config) {
+  const next = {
+    clientId: String(config.clientId || '').trim(),
+    clientSecret: String(config.clientSecret || '').trim(),
+    refreshToken: String(config.refreshToken || '').trim(),
+    accessToken: String(config.accessToken || '').trim(),
+    expiresAt: Number(config.expiresAt || 0)
+  };
+  await fs.mkdir(app.getPath('userData'), { recursive: true });
+  await fs.writeFile(getGoogleConfigPath(), JSON.stringify(next, null, 2), { mode: 0o600 });
+  return next;
+}
+
+function getGooglePublicStatus(config) {
+  return {
+    clientId: config.clientId || '',
+    hasClientSecret: Boolean(config.clientSecret),
+    authorized: Boolean(config.refreshToken),
+    configured: Boolean(config.clientId && config.clientSecret && config.refreshToken)
+  };
+}
+
+async function getCloudStatus() {
+  const settings = await readAppSettings();
+  const cloudflare = await getCloudflareConfig();
+  const google = getGooglePublicStatus(await readGoogleConfig());
+  return {
+    saveTarget: settings.saveTarget,
+    cloudProvider: settings.cloudProvider,
+    providers: {
+      cloudflare: {
+        id: 'cloudflare',
+        label: 'Cloudflare Stream',
+        configured: Boolean(cloudflare.configured),
+        customerSubdomain: cloudflare.customerSubdomain || '',
+        creator: cloudflare.creator || '',
+        basicUploadLimitMb: Math.floor(cloudUploadLimitBytes / 1024 / 1024)
+      },
+      googleDrive: {
+        id: 'googleDrive',
+        label: 'Google Drive',
+        configured: google.configured,
+        authorized: google.authorized
+      },
+      youtube: {
+        id: 'youtube',
+        label: 'YouTube no listado',
+        configured: google.configured,
+        authorized: google.authorized
+      }
+    },
+    google
+  };
+}
+
+async function saveGoogleCloudSettings(payload = {}) {
+  const current = await readGoogleConfig();
+  const clientId = String(payload.clientId || current.clientId || '').trim();
+  const clientSecret = String(payload.clientSecret || '').trim() || current.clientSecret;
+  const sameClient = clientId === current.clientId && clientSecret === current.clientSecret;
+  await writeGoogleConfig({
+    clientId,
+    clientSecret,
+    refreshToken: sameClient ? current.refreshToken : '',
+    accessToken: sameClient ? current.accessToken : '',
+    expiresAt: sameClient ? current.expiresAt : 0
+  });
+  return getCloudStatus();
+}
+
+async function requestGoogleToken(params) {
+  const body = new URLSearchParams(params);
+  const response = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || !payload) {
+    const detail = payload?.error_description || payload?.error || response.statusText;
+    throw new Error(`Google OAuth fallo: ${detail}`);
+  }
+  return payload;
+}
+
+async function authorizeGoogleCloud() {
+  const config = await readGoogleConfig();
+  if (!config.clientId || !config.clientSecret) {
+    throw new Error('Primero pega el Client ID y Client Secret de Google en Ajustes.');
+  }
+
+  const state = crypto.randomBytes(18).toString('hex');
+  let timeout;
+  let callbackSettled = false;
+  let server;
+
+  const callbackPromise = new Promise((resolve, reject) => {
+    server = http.createServer((request, response) => {
+      const redirectBase = `http://127.0.0.1:${server.address().port}`;
+      const url = new URL(request.url, redirectBase);
+      if (url.pathname !== '/oauth2callback') {
+        response.writeHead(404);
+        response.end('Not found');
+        return;
+      }
+
+      const error = url.searchParams.get('error');
+      const code = url.searchParams.get('code');
+      const receivedState = url.searchParams.get('state');
+      response.writeHead(error || !code || receivedState !== state ? 400 : 200, { 'Content-Type': 'text/html; charset=utf-8' });
+      response.end(error
+        ? '<h2>Google no autorizo Loom.</h2><p>Puedes cerrar esta ventana.</p>'
+        : '<h2>Google conectado con Loom.</h2><p>Ya puedes cerrar esta ventana y volver a la app.</p>');
+
+      if (callbackSettled) return;
+      callbackSettled = true;
+      clearTimeout(timeout);
+      try {
+        server.close();
+      } catch {
+        // The timeout/finally path can close the loopback server first.
+      }
+      if (error) reject(new Error(`Google rechazo la autorizacion: ${error}`));
+      else if (!code || receivedState !== state) reject(new Error('La respuesta OAuth de Google no fue valida.'));
+      else resolve({ code, redirectUri: redirectBase + '/oauth2callback' });
+    });
+
+    server.on('error', reject);
+  });
+
+  await new Promise((resolve, reject) => {
+    server.listen(0, '127.0.0.1', resolve);
+    server.once('error', reject);
+  });
+
+  timeout = setTimeout(() => {
+    if (callbackSettled) return;
+    callbackSettled = true;
+    try {
+      server.close();
+    } catch {
+      // The callback path can close it first.
+    }
+  }, 120000);
+
+  const redirectUri = `http://127.0.0.1:${server.address().port}/oauth2callback`;
+  const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+  authUrl.searchParams.set('client_id', config.clientId);
+  authUrl.searchParams.set('redirect_uri', redirectUri);
+  authUrl.searchParams.set('response_type', 'code');
+  authUrl.searchParams.set('scope', googleScopes.join(' '));
+  authUrl.searchParams.set('access_type', 'offline');
+  authUrl.searchParams.set('prompt', 'consent');
+  authUrl.searchParams.set('state', state);
+
+  await shell.openExternal(authUrl.toString());
+
+  let codePayload;
+  try {
+    codePayload = await Promise.race([
+      callbackPromise,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Google no regreso autorizacion a tiempo.')), 120000))
+    ]);
+  } finally {
+    clearTimeout(timeout);
+    try {
+      server.close();
+    } catch {
+      // It may already be closed by the callback handler.
+    }
+  }
+
+  const token = await requestGoogleToken({
+    code: codePayload.code,
+    client_id: config.clientId,
+    client_secret: config.clientSecret,
+    redirect_uri: codePayload.redirectUri,
+    grant_type: 'authorization_code'
+  });
+
+  if (!token.refresh_token && !config.refreshToken) {
+    throw new Error('Google no regreso refresh token. Quita el acceso anterior de la app en tu cuenta Google y vuelve a autorizar.');
+  }
+
+  await writeGoogleConfig({
+    ...config,
+    accessToken: token.access_token || '',
+    refreshToken: token.refresh_token || config.refreshToken,
+    expiresAt: Date.now() + Math.max(0, Number(token.expires_in || 3600) - 60) * 1000
+  });
+
+  return getCloudStatus();
+}
+
+async function disconnectGoogleCloud() {
+  const config = await readGoogleConfig();
+  await writeGoogleConfig({
+    clientId: config.clientId,
+    clientSecret: config.clientSecret,
+    refreshToken: '',
+    accessToken: '',
+    expiresAt: 0
+  });
+  return getCloudStatus();
+}
+
+async function getGoogleAccessToken() {
+  const config = await readGoogleConfig();
+  if (!config.clientId || !config.clientSecret || !config.refreshToken) {
+    throw new Error('Google no esta conectado. Abre Ajustes y autoriza Google Drive/YouTube.');
+  }
+  if (config.accessToken && config.expiresAt > Date.now() + 30000) {
+    return config.accessToken;
+  }
+
+  const token = await requestGoogleToken({
+    client_id: config.clientId,
+    client_secret: config.clientSecret,
+    refresh_token: config.refreshToken,
+    grant_type: 'refresh_token'
+  });
+
+  const next = await writeGoogleConfig({
+    ...config,
+    accessToken: token.access_token || '',
+    expiresAt: Date.now() + Math.max(0, Number(token.expires_in || 3600) - 60) * 1000
+  });
+  return next.accessToken;
+}
+
+function getVideoMimeType(filePath) {
+  return /\.webm$/i.test(filePath) ? 'video/webm' : 'video/mp4';
+}
+
+async function startGoogleResumableUpload({ endpoint, accessToken, filePath, metadata, part }) {
+  const stat = await fs.stat(filePath);
+  const body = JSON.stringify(metadata);
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json; charset=UTF-8',
+      'Content-Length': String(Buffer.byteLength(body)),
+      'X-Upload-Content-Length': String(stat.size),
+      'X-Upload-Content-Type': getVideoMimeType(filePath)
+    },
+    body
+  });
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => response.statusText);
+    throw new Error(`Google no inicio la subida${part ? ` de ${part}` : ''}: ${detail || response.statusText}`);
+  }
+
+  const uploadUrl = response.headers.get('location');
+  if (!uploadUrl) throw new Error('Google no regreso URL de subida resumible.');
+  return { uploadUrl, size: stat.size, mimeType: getVideoMimeType(filePath) };
+}
+
+async function curlUploadToGoogle(uploadUrl, accessToken, filePath, size, mimeType, useContentRange = false) {
+  const args = [
+    '--fail',
+    '--silent',
+    '--show-error',
+    '--request', 'PUT',
+    '--header', `Authorization: Bearer ${accessToken}`,
+    '--header', `Content-Type: ${mimeType}`,
+    '--header', `Content-Length: ${size}`,
+    '--upload-file', filePath
+  ];
+
+  if (useContentRange) {
+    args.splice(args.length - 2, 0, '--header', `Content-Range: bytes 0-${Math.max(0, size - 1)}/${size}`);
+  }
+
+  args.push(uploadUrl);
+  const { stdout } = await execFileAsync('curl', args, { maxBuffer: 4 * 1024 * 1024 });
+  return stdout ? JSON.parse(stdout) : {};
+}
+
+async function uploadFileToGoogleDrive(payload) {
+  const filePath = String(payload.filePath || '');
+  const accessToken = await getGoogleAccessToken();
+  const title = `${payload.title || path.basename(filePath, path.extname(filePath)) || 'Grabacion Loom'}.mp4`;
+  const endpoint = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,name,webViewLink,webContentLink';
+  const metadata = {
+    name: title,
+    mimeType: getVideoMimeType(filePath)
+  };
+  const sessionInfo = await startGoogleResumableUpload({
+    endpoint,
+    accessToken,
+    filePath,
+    metadata,
+    part: 'Google Drive'
+  });
+  const result = await curlUploadToGoogle(sessionInfo.uploadUrl, accessToken, filePath, sessionInfo.size, sessionInfo.mimeType);
+  const watchUrl = result.webViewLink || result.webContentLink || (result.id ? `https://drive.google.com/file/d/${result.id}/view` : '');
+  if (watchUrl) {
+    clipboard.writeText(watchUrl);
+    await shell.openExternal(watchUrl).catch(() => {});
+  }
+  if (payload.deleteLocal) await fs.unlink(filePath).catch(() => {});
+  return {
+    provider: 'googleDrive',
+    id: result.id || '',
+    watchUrl,
+    copiedToClipboard: Boolean(watchUrl)
+  };
+}
+
+async function uploadFileToYouTube(payload) {
+  const filePath = String(payload.filePath || '');
+  const accessToken = await getGoogleAccessToken();
+  const title = payload.title || path.basename(filePath, path.extname(filePath)) || 'Grabacion Loom';
+  const endpoint = 'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status';
+  const metadata = {
+    snippet: {
+      title,
+      description: 'Subido desde Loom.',
+      categoryId: '22'
+    },
+    status: {
+      privacyStatus: 'unlisted',
+      selfDeclaredMadeForKids: false
+    }
+  };
+  const sessionInfo = await startGoogleResumableUpload({
+    endpoint,
+    accessToken,
+    filePath,
+    metadata,
+    part: 'YouTube'
+  });
+  const result = await curlUploadToGoogle(sessionInfo.uploadUrl, accessToken, filePath, sessionInfo.size, sessionInfo.mimeType, true);
+  const watchUrl = result.id ? `https://youtu.be/${result.id}` : '';
+  if (watchUrl) {
+    clipboard.writeText(watchUrl);
+    await shell.openExternal(watchUrl).catch(() => {});
+  }
+  if (payload.deleteLocal) await fs.unlink(filePath).catch(() => {});
+  return {
+    provider: 'youtube',
+    id: result.id || '',
+    watchUrl,
+    copiedToClipboard: Boolean(watchUrl),
+    privacyStatus: 'unlisted'
+  };
+}
+
+async function uploadToSelectedCloud(payload) {
+  const settings = await readAppSettings();
+  const provider = normalizeCloudProvider(payload.provider || settings.cloudProvider);
+  if (provider === 'cloudflare') {
+    const config = await getCloudflareConfig();
+    if (!config.configured) {
+      throw new Error('Cloudflare Stream no esta configurado en esta Mac.');
+    }
+
+    const filePath = payload.filePath;
+    const stat = await fs.stat(filePath);
+    if (stat.size > cloudUploadLimitBytes) {
+      throw new Error('Este video pesa mas de 200 MB. Cloudflare Stream requiere subida resumible TUS para archivos grandes; baja la resolucion o grabalo mas corto por ahora.');
+    }
+
+    const directUpload = await createCloudflareDirectUpload(config, payload.title);
+    const uploadLibraryUrl = getLibraryUrl(config, directUpload.uid, 'uploading', payload.title);
+    if (uploadLibraryUrl) await shell.openExternal(uploadLibraryUrl).catch(() => {});
+    await uploadFileToCloudflare(directUpload.uploadURL, filePath);
+
+    const watchUrl = getCloudflareWatchUrl(config, directUpload.uid);
+    if (watchUrl) clipboard.writeText(watchUrl);
+    if (payload.deleteLocal) await fs.unlink(filePath).catch(() => {});
+    const libraryUrl = getLibraryUrl(config, directUpload.uid, 'processing', payload.title);
+
+    return {
+      provider: 'cloudflare',
+      uid: directUpload.uid,
+      watchUrl,
+      iframeUrl: config.customerSubdomain ? `https://${config.customerSubdomain}/${directUpload.uid}/iframe` : '',
+      libraryUrl,
+      copiedToClipboard: Boolean(watchUrl)
+    };
+  }
+
+  if (provider === 'googleDrive') return uploadFileToGoogleDrive(payload);
+  if (provider === 'youtube') return uploadFileToYouTube(payload);
+  throw new Error('Proveedor de nube no soportado.');
+}
+
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
@@ -504,36 +935,12 @@ ipcMain.handle('cloudflare:status', async () => {
   };
 });
 
-ipcMain.handle('cloudflare:upload', async (_event, payload) => {
-  const config = await getCloudflareConfig();
-  if (!config.configured) {
-    throw new Error('Cloudflare Stream no esta configurado en esta Mac.');
-  }
-
-  const filePath = payload.filePath;
-  const stat = await fs.stat(filePath);
-  if (stat.size > cloudUploadLimitBytes) {
-    throw new Error('Este video pesa mas de 200 MB. Cloudflare Stream requiere subida resumible TUS para archivos grandes; baja la resolucion o grabalo mas corto por ahora.');
-  }
-
-  const directUpload = await createCloudflareDirectUpload(config, payload.title);
-  const uploadLibraryUrl = getLibraryUrl(config, directUpload.uid, 'uploading', payload.title);
-  if (uploadLibraryUrl) await shell.openExternal(uploadLibraryUrl).catch(() => {});
-  await uploadFileToCloudflare(directUpload.uploadURL, filePath);
-
-  const watchUrl = getCloudflareWatchUrl(config, directUpload.uid);
-  if (watchUrl) clipboard.writeText(watchUrl);
-  if (payload.deleteLocal) await fs.unlink(filePath).catch(() => {});
-  const libraryUrl = getLibraryUrl(config, directUpload.uid, 'processing', payload.title);
-
-  return {
-    uid: directUpload.uid,
-    watchUrl,
-    iframeUrl: config.customerSubdomain ? `https://${config.customerSubdomain}/${directUpload.uid}/iframe` : '',
-    libraryUrl,
-    copiedToClipboard: Boolean(watchUrl)
-  };
-});
+ipcMain.handle('cloud:status', async () => getCloudStatus());
+ipcMain.handle('cloud:saveGoogleSettings', async (_event, payload) => saveGoogleCloudSettings(payload));
+ipcMain.handle('cloud:authorizeGoogle', async () => authorizeGoogleCloud());
+ipcMain.handle('cloud:disconnectGoogle', async () => disconnectGoogleCloud());
+ipcMain.handle('cloud:upload', async (_event, payload) => uploadToSelectedCloud(payload));
+ipcMain.handle('cloudflare:upload', async (_event, payload) => uploadToSelectedCloud({ ...payload, provider: 'cloudflare' }));
 
 ipcMain.handle('recordings:list', async () => {
   const recordingsDir = await getRecordingsDir();
@@ -565,9 +972,21 @@ ipcMain.handle('recordings:openFolder', async () => {
 
 ipcMain.handle('settings:get', async () => formatAppSettings(await readAppSettings()));
 
-ipcMain.handle('settings:setSaveTarget', async (_event, saveTarget) => {
-  const target = saveTarget === 'cloud' ? 'cloud' : 'local';
-  return writeAppSettings({ saveTarget: target });
+ipcMain.handle('settings:setSaveTarget', async (_event, payload) => {
+  const current = await readAppSettings();
+  if (typeof payload === 'object' && payload !== null) {
+    const provider = normalizeCloudProvider(payload.cloudProvider || current.cloudProvider);
+    const target = payload.saveTarget === 'cloud' ? 'cloud' : 'local';
+    return writeAppSettings({ saveTarget: target, cloudProvider: provider });
+  }
+
+  const requested = String(payload || '');
+  if (cloudProviderIds.includes(requested)) {
+    return writeAppSettings({ saveTarget: 'cloud', cloudProvider: requested });
+  }
+
+  const target = requested === 'cloud' ? 'cloud' : 'local';
+  return writeAppSettings({ saveTarget: target, cloudProvider: current.cloudProvider });
 });
 
 ipcMain.handle('settings:chooseSaveDirectory', async () => {

@@ -42,6 +42,9 @@
           </div>
           <div class="header-actions">
             <span id="recTimer">00:00</span>
+            <button id="settingsBtn" class="header-icon" title="Ajustes" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.2a3.8 3.8 0 1 0 0 7.6 3.8 3.8 0 0 0 0-7.6Z"/><path d="m19.4 15 .7 2.6-2.4 1.4-1.9-1.8a7.4 7.4 0 0 1-2.1.8l-.7 2.5h-2.8L9.5 18a7.4 7.4 0 0 1-2.1-.8L5.5 19 3.1 17.6l.7-2.6a7.8 7.8 0 0 1-1-1.8L.3 12l.9-2.7 2.7-.2c.3-.7.6-1.3 1-1.8l-.7-2.6 2.4-1.4 1.9 1.8c.7-.4 1.4-.6 2.1-.8l.7-2.5h2.8l.7 2.5c.7.2 1.5.4 2.1.8l1.9-1.8 2.4 1.4-.7 2.6c.4.6.8 1.2 1 1.8l2.7.2.9 2.7-2.5 1.2c-.3.6-.6 1.2-1 1.8Z"/></svg>
+            </button>
             <button id="quitBtn" title="Cerrar Loom">×</button>
           </div>
         </header>
@@ -121,9 +124,17 @@
                 <strong>Local</strong>
                 <small id="localTargetStatus">En carpeta</small>
               </button>
-              <button data-save-target="cloud">
+              <button data-save-target="cloudflare">
                 <strong>Cloudflare Stream</strong>
                 <small id="cloudStatus">Revisando nube</small>
+              </button>
+              <button data-save-target="googleDrive">
+                <strong>Google Drive</strong>
+                <small id="driveStatus">Conecta Google</small>
+              </button>
+              <button data-save-target="youtube">
+                <strong>YouTube no listado</strong>
+                <small id="youtubeStatus">Conecta Google</small>
               </button>
             </div>
           </div>
@@ -143,6 +154,67 @@
           <button id="stopBtn" class="danger" disabled>Detener</button>
         </div>
 
+      </section>
+
+      <section id="settingsPanel" class="settings-panel interactive hidden" aria-label="Ajustes de Loom">
+        <header class="settings-panel-header">
+          <div>
+            <span>Ajustes</span>
+            <strong>Nube y guardado</strong>
+          </div>
+          <button id="settingsCloseBtn" title="Cerrar ajustes" type="button">×</button>
+        </header>
+
+        <div class="settings-panel-body">
+          <div class="dropdown setting-row">
+            <button id="cloudProviderBtn" class="setting-select-button" type="button">
+              <div>
+                <span class="section-label">Plataforma de nube</span>
+                <strong id="cloudProviderLabel">Cloudflare Stream</strong>
+              </div>
+              <b>⌄</b>
+            </button>
+            <div id="cloudProviderMenu" class="dropdown-menu hidden">
+              <button data-cloud-provider="cloudflare">
+                <strong>Cloudflare Stream</strong>
+                <small id="cloudflareSettingsStatus">Revisando</small>
+              </button>
+              <button data-cloud-provider="googleDrive">
+                <strong>Google Drive</strong>
+                <small id="driveSettingsStatus">Conecta Google</small>
+              </button>
+              <button data-cloud-provider="youtube">
+                <strong>YouTube no listado</strong>
+                <small id="youtubeSettingsStatus">Conecta Google</small>
+              </button>
+            </div>
+          </div>
+
+          <div class="settings-note" id="cloudProviderNote">
+            Cloudflare usa tu archivo local de configuración. Google Drive y YouTube usan OAuth de Google.
+          </div>
+
+          <div class="google-settings-card">
+            <div class="google-settings-title">
+              <strong>Google</strong>
+              <small id="googleAuthStatus">Sin conectar</small>
+            </div>
+            <label>
+              <span>Client ID</span>
+              <input id="googleClientIdInput" placeholder="OAuth Client ID tipo Desktop">
+            </label>
+            <label>
+              <span>Client Secret</span>
+              <input id="googleClientSecretInput" placeholder="Pegar para guardar o dejar igual" type="password">
+            </label>
+            <p>Activa Google Drive API y YouTube Data API en Google Cloud. Para YouTube se sube como video no listado.</p>
+            <div class="settings-actions">
+              <button id="saveGoogleSettingsBtn" type="button">Guardar</button>
+              <button id="authorizeGoogleBtn" class="primary-mini" type="button">Conectar Google</button>
+              <button id="disconnectGoogleBtn" type="button">Desconectar</button>
+            </div>
+          </div>
+        </div>
       </section>
 
       <div id="countdown" class="countdown hidden">3</div>

@@ -191,7 +191,8 @@ body.selecting-area .control-panel {
   gap: 8px;
 }
 
-#quitBtn {
+#quitBtn,
+.header-icon {
   display: grid;
   width: 28px;
   height: 28px;
@@ -204,9 +205,24 @@ body.selecting-area .control-panel {
   line-height: 1;
 }
 
+.header-icon svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 #quitBtn:hover {
   color: #fff;
   background: var(--danger);
+}
+
+.header-icon:hover {
+  color: #4d3fff;
+  background: #e9e6ff;
 }
 
 .mode-row {
@@ -251,6 +267,7 @@ body.selecting-area .control-panel {
 }
 
 input[type="text"],
+input[type="password"],
 input:not([type]) {
   width: 100%;
   height: 36px;
@@ -590,6 +607,14 @@ footer button:hover {
   opacity: 0.45;
 }
 
+.dropdown-menu button.needs-setup small {
+  color: #a36b00;
+}
+
+.dropdown-menu button.selected.needs-setup small {
+  color: rgba(255, 255, 255, 0.82);
+}
+
 .save-menu {
   min-width: 100%;
 }
@@ -647,6 +672,140 @@ footer button:hover {
 .folder-button:hover,
 .icon-action:hover {
   background: #eef0f6;
+}
+
+.settings-panel {
+  position: absolute;
+  top: 86px;
+  right: 22px;
+  z-index: 85;
+  width: 318px;
+  padding: 14px;
+  border-radius: 26px;
+  color: var(--text);
+  background: rgba(252, 252, 253, 0.98);
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28);
+}
+
+body.recording .settings-panel {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.settings-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.settings-panel-header span,
+.google-settings-title small,
+.settings-note,
+.google-settings-card p,
+.google-settings-card label span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.settings-panel-header strong {
+  display: block;
+  font-size: 15px;
+  font-weight: 560;
+}
+
+#settingsCloseBtn {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--text);
+  background: #f0f1f5;
+  font-size: 18px;
+  line-height: 1;
+}
+
+#settingsCloseBtn:hover {
+  color: #fff;
+  background: var(--danger);
+}
+
+.settings-panel-body {
+  display: grid;
+  gap: 9px;
+}
+
+.settings-note {
+  padding: 0 4px;
+  line-height: 1.35;
+}
+
+.google-settings-card {
+  display: grid;
+  gap: 9px;
+  padding: 11px;
+  border-radius: 20px;
+  background: #f4f5f8;
+}
+
+.google-settings-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.google-settings-title strong {
+  font-size: 13px;
+  font-weight: 560;
+}
+
+.google-settings-card label {
+  display: grid;
+  gap: 5px;
+}
+
+.google-settings-card input {
+  height: 38px;
+  border-radius: 15px;
+  background: #fff;
+}
+
+.google-settings-card p {
+  margin: 0;
+  line-height: 1.35;
+}
+
+.settings-actions {
+  display: grid;
+  grid-template-columns: 0.8fr 1.2fr 1fr;
+  gap: 7px;
+}
+
+.settings-actions button {
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: 999px;
+  color: var(--text);
+  background: #fff;
+  font-size: 11px;
+  font-weight: 560;
+}
+
+.settings-actions button:hover {
+  background: #e9ebf2;
+}
+
+.settings-actions .primary-mini {
+  color: #fff;
+  background: linear-gradient(135deg, #007aff, #6554ff);
+}
+
+.settings-actions .primary-mini:hover {
+  filter: brightness(0.96);
 }
 
 .actions .primary {

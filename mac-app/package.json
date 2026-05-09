@@ -1,6 +1,6 @@
 {
   "name": "loom-mac",
-  "version": "1.0.23",
+  "version": "1.0.24",
   "description": "Local-first Loom-style recorder for macOS.",
   "main": "src/main.js",
   "scripts": {

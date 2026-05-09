@@ -49,6 +49,24 @@ const saveTargetLabel = document.querySelector('#saveTargetLabel');
 const saveTargetBtn = document.querySelector('#saveTargetBtn');
 const saveTargetMenu = document.querySelector('#saveTargetMenu');
 const saveTargetButtons = document.querySelectorAll('[data-save-target]');
+const settingsBtn = document.querySelector('#settingsBtn');
+const settingsPanel = document.querySelector('#settingsPanel');
+const settingsCloseBtn = document.querySelector('#settingsCloseBtn');
+const cloudProviderBtn = document.querySelector('#cloudProviderBtn');
+const cloudProviderMenu = document.querySelector('#cloudProviderMenu');
+const cloudProviderLabel = document.querySelector('#cloudProviderLabel');
+const cloudProviderButtons = document.querySelectorAll('[data-cloud-provider]');
+const cloudflareSettingsStatus = document.querySelector('#cloudflareSettingsStatus');
+const driveStatus = document.querySelector('#driveStatus');
+const youtubeStatus = document.querySelector('#youtubeStatus');
+const driveSettingsStatus = document.querySelector('#driveSettingsStatus');
+const youtubeSettingsStatus = document.querySelector('#youtubeSettingsStatus');
+const googleAuthStatus = document.querySelector('#googleAuthStatus');
+const googleClientIdInput = document.querySelector('#googleClientIdInput');
+const googleClientSecretInput = document.querySelector('#googleClientSecretInput');
+const saveGoogleSettingsBtn = document.querySelector('#saveGoogleSettingsBtn');
+const authorizeGoogleBtn = document.querySelector('#authorizeGoogleBtn');
+const disconnectGoogleBtn = document.querySelector('#disconnectGoogleBtn');
 const localFolderRow = document.querySelector('#localFolderRow');
 const localFolderName = document.querySelector('#localFolderName');
 const localFolderPath = document.querySelector('#localFolderPath');
@@ -82,9 +100,10 @@ let discardRecording = false;
 let pausedAt = 0;
 let pausedMs = 0;
 let isDrawing = false;
-let cloudflareConfigured = false;
 let cloudUploadEnabled = false;
 let saveTarget = 'local';
+let cloudProvider = 'cloudflare';
+let cloudStatusState = null;
 let localSaveDir = '';
 let localSaveDirName = 'Escritorio';
 let lastPoint = null;
@@ -123,30 +142,86 @@ async function requestStartupPermissions() {
   }
 }
 
-async function loadCloudflareStatus() {
-  if (!window.loomLocal?.cloudflareStatus) return;
+const CLOUD_PROVIDER_LABELS = {
+  cloudflare: 'Cloudflare Stream',
+  googleDrive: 'Google Drive',
+  youtube: 'YouTube no listado'
+};
+
+function normalizeCloudProvider(provider) {
+  return CLOUD_PROVIDER_LABELS[provider] ? provider : 'cloudflare';
+}
+
+async function loadCloudStatus() {
+  if (!window.loomLocal?.cloudStatus && !window.loomLocal?.cloudflareStatus) return;
   try {
-    const status = await window.loomLocal.cloudflareStatus();
-    cloudflareConfigured = Boolean(status.configured);
-    if (!cloudflareConfigured && saveTarget === 'cloud') saveTarget = 'local';
+    if (window.loomLocal.cloudStatus) {
+      applyCloudStatus(await window.loomLocal.cloudStatus());
+    } else {
+      const status = await window.loomLocal.cloudflareStatus();
+      applyCloudStatus({
+        cloudProvider,
+        providers: {
+          cloudflare: {
+            configured: Boolean(status.configured)
+          }
+        },
+        google: {}
+      });
+    }
     updateCloudUi();
   } catch (error) {
     console.error(error);
-    cloudflareConfigured = false;
+    cloudStatusState = null;
     if (saveTarget === 'cloud') saveTarget = 'local';
     updateCloudUi();
   }
 }
 
+async function loadCloudflareStatus() {
+  await loadCloudStatus();
+}
+
+function applyCloudStatus(status) {
+  cloudStatusState = status || null;
+  if (status?.cloudProvider) cloudProvider = normalizeCloudProvider(status.cloudProvider);
+  if (status?.saveTarget) saveTarget = status.saveTarget === 'cloud' ? 'cloud' : 'local';
+  if (saveTarget === 'cloud' && !isCloudProviderConfigured(cloudProvider)) saveTarget = 'local';
+  renderSettingsPanel();
+}
+
+function getProviderState(provider = cloudProvider) {
+  return cloudStatusState?.providers?.[normalizeCloudProvider(provider)] || {};
+}
+
+function isCloudProviderConfigured(provider = cloudProvider) {
+  return Boolean(getProviderState(provider).configured);
+}
+
+function getProviderLabel(provider = cloudProvider) {
+  return CLOUD_PROVIDER_LABELS[normalizeCloudProvider(provider)];
+}
+
+function getProviderStatusText(provider = cloudProvider) {
+  const normalized = normalizeCloudProvider(provider);
+  if (normalized === 'cloudflare') return isCloudProviderConfigured(normalized) ? 'Listo para biblioteca' : 'No configurado';
+  return isCloudProviderConfigured(normalized) ? 'Google conectado' : 'Conecta Google';
+}
+
 function updateCloudUi() {
-  cloudUploadEnabled = saveTarget === 'cloud' && cloudflareConfigured;
+  cloudUploadEnabled = saveTarget === 'cloud' && isCloudProviderConfigured(cloudProvider);
   if (cloudToggle) {
-    cloudToggle.classList.toggle('enabled', cloudUploadEnabled && cloudflareConfigured);
-    cloudToggle.disabled = !cloudflareConfigured;
+    cloudToggle.classList.toggle('enabled', cloudUploadEnabled);
+    cloudToggle.disabled = !isCloudProviderConfigured(cloudProvider);
   }
   if (cloudStatus) {
-    cloudStatus.textContent = cloudflareConfigured ? 'Subir y abrir biblioteca' : 'No configurado';
+    cloudStatus.textContent = getProviderStatusText('cloudflare');
   }
+  if (driveStatus) driveStatus.textContent = getProviderStatusText('googleDrive');
+  if (youtubeStatus) youtubeStatus.textContent = getProviderStatusText('youtube');
+  if (cloudflareSettingsStatus) cloudflareSettingsStatus.textContent = getProviderStatusText('cloudflare');
+  if (driveSettingsStatus) driveSettingsStatus.textContent = getProviderStatusText('googleDrive');
+  if (youtubeSettingsStatus) youtubeSettingsStatus.textContent = getProviderStatusText('youtube');
   updateSaveUi();
 }
 
@@ -163,6 +238,7 @@ async function loadAppSettings() {
 function applySettings(settings, updateTarget = true) {
   if (!settings) return;
   if (updateTarget) saveTarget = settings.saveTarget === 'cloud' ? 'cloud' : 'local';
+  if (settings.cloudProvider) cloudProvider = normalizeCloudProvider(settings.cloudProvider);
   localSaveDir = settings.recordingsDir || localSaveDir;
   localSaveDirName = settings.recordingsDirName || folderName(localSaveDir) || localSaveDirName;
   updateSaveUi();
@@ -199,32 +275,61 @@ function setQuality(value) {
 }
 
 function updateSaveUi() {
-  const isCloud = saveTarget === 'cloud' && cloudflareConfigured;
-  const label = isCloud ? 'Cloudflare Stream' : 'Local';
+  const isCloud = saveTarget === 'cloud';
+  const label = isCloud ? getProviderLabel(cloudProvider) : 'Local';
   if (saveTargetLabel) saveTargetLabel.textContent = label;
+  if (cloudProviderLabel) cloudProviderLabel.textContent = getProviderLabel(cloudProvider);
   if (localFolderName) localFolderName.textContent = localSaveDirName || folderName(localSaveDir) || 'Carpeta local';
   if (localFolderPath) localFolderPath.textContent = compactPath(localSaveDir);
   if (localTargetStatus) localTargetStatus.textContent = localSaveDirName || 'En carpeta';
   if (localFolderRow) localFolderRow.classList.toggle('hidden', isCloud);
   saveTargetButtons.forEach((button) => {
     const target = button.dataset.saveTarget;
-    const selected = isCloud ? target === 'cloud' : target === 'local';
+    const selected = isCloud ? target === cloudProvider : target === 'local';
     button.classList.toggle('selected', selected);
-    if (target === 'cloud') button.disabled = !cloudflareConfigured;
+    button.classList.toggle('needs-setup', target !== 'local' && !isCloudProviderConfigured(target));
   });
-  cloudUploadEnabled = isCloud;
+  cloudProviderButtons.forEach((button) => {
+    const provider = normalizeCloudProvider(button.dataset.cloudProvider);
+    button.classList.toggle('selected', provider === cloudProvider);
+    button.classList.toggle('needs-setup', !isCloudProviderConfigured(provider));
+  });
+  cloudUploadEnabled = isCloud && isCloudProviderConfigured(cloudProvider);
 }
 
 async function setSaveTarget(nextTarget, persist = true) {
-  if (nextTarget === 'cloud' && !cloudflareConfigured) {
-    showToast('Cloudflare Stream no está configurado');
-    nextTarget = 'local';
+  const target = nextTarget === 'cloud' ? 'cloudflare' : nextTarget;
+  if (target === 'local') {
+    saveTarget = 'local';
+  } else {
+    cloudProvider = normalizeCloudProvider(target);
+    if (!isCloudProviderConfigured(cloudProvider)) {
+      saveTarget = 'local';
+      showToast(`${getProviderLabel(cloudProvider)} necesita ajustes`);
+      openSettingsPanel();
+    } else {
+      saveTarget = 'cloud';
+    }
   }
-  saveTarget = nextTarget === 'cloud' ? 'cloud' : 'local';
   updateSaveUi();
   if (persist && window.loomLocal?.setSaveTarget) {
     try {
-      applySettings(await window.loomLocal.setSaveTarget(saveTarget), false);
+      applySettings(await window.loomLocal.setSaveTarget({ saveTarget, cloudProvider }), false);
+      await loadCloudStatus();
+    } catch (error) {
+      console.error(error);
+    }
+  }
+}
+
+async function setCloudProvider(nextProvider, persist = true) {
+  cloudProvider = normalizeCloudProvider(nextProvider);
+  if (saveTarget === 'cloud' && !isCloudProviderConfigured(cloudProvider)) saveTarget = 'local';
+  updateSaveUi();
+  if (persist && window.loomLocal?.setSaveTarget) {
+    try {
+      applySettings(await window.loomLocal.setSaveTarget({ saveTarget, cloudProvider }), false);
+      await loadCloudStatus();
     } catch (error) {
       console.error(error);
     }
@@ -239,9 +344,84 @@ function toggleDropdown(menu) {
 }
 
 function closeDropdowns() {
-  [qualityMenu, saveTargetMenu, cameraMenu].forEach((menu) => {
+  [qualityMenu, saveTargetMenu, cameraMenu, cloudProviderMenu].forEach((menu) => {
     if (menu) menu.classList.add('hidden');
   });
+}
+
+function renderSettingsPanel() {
+  const google = cloudStatusState?.google || {};
+  if (cloudProviderLabel) cloudProviderLabel.textContent = getProviderLabel(cloudProvider);
+  if (googleClientIdInput && document.activeElement !== googleClientIdInput) {
+    googleClientIdInput.value = google.clientId || '';
+  }
+  if (googleClientSecretInput) {
+    googleClientSecretInput.placeholder = google.hasClientSecret ? 'Guardado; escribe para reemplazar' : 'Client Secret';
+  }
+  if (googleAuthStatus) {
+    googleAuthStatus.textContent = google.authorized ? 'Conectado' : google.hasClientSecret ? 'Falta autorizar' : 'Sin conectar';
+  }
+  if (disconnectGoogleBtn) disconnectGoogleBtn.disabled = !google.authorized;
+  updateSaveUi();
+}
+
+function openSettingsPanel() {
+  closeDropdowns();
+  if (!settingsPanel) return;
+  settingsPanel.classList.remove('hidden');
+  renderSettingsPanel();
+  if (window.loomLocal) window.loomLocal.setMousePassthrough(false);
+}
+
+function closeSettingsPanel() {
+  if (!settingsPanel) return;
+  settingsPanel.classList.add('hidden');
+}
+
+async function saveGoogleSettingsFromUi() {
+  if (!window.loomLocal?.saveGoogleCloudSettings) return false;
+  try {
+    const status = await window.loomLocal.saveGoogleCloudSettings({
+      clientId: googleClientIdInput?.value || '',
+      clientSecret: googleClientSecretInput?.value || ''
+    });
+    if (googleClientSecretInput) googleClientSecretInput.value = '';
+    applyCloudStatus(status);
+    updateCloudUi();
+    showToast('Ajustes de Google guardados');
+    return true;
+  } catch (error) {
+    console.error(error);
+    throw error;
+  }
+}
+
+async function authorizeGoogleFromUi() {
+  if (!window.loomLocal?.authorizeGoogleCloud) return;
+  try {
+    await saveGoogleSettingsFromUi();
+    showToast('Abriendo Google para conectar...');
+    const status = await window.loomLocal.authorizeGoogleCloud();
+    applyCloudStatus(status);
+    updateCloudUi();
+    showToast('Google conectado');
+  } catch (error) {
+    console.error(error);
+    alert(`No pude conectar Google: ${error.message}`);
+  }
+}
+
+async function disconnectGoogleFromUi() {
+  if (!window.loomLocal?.disconnectGoogleCloud) return;
+  try {
+    const status = await window.loomLocal.disconnectGoogleCloud();
+    applyCloudStatus(status);
+    updateCloudUi();
+    showToast('Google desconectado');
+  } catch (error) {
+    console.error(error);
+    alert(`No pude desconectar Google: ${error.message}`);
+  }
 }
 
 async function loadCameraDevices() {
@@ -705,8 +885,9 @@ async function saveRecording() {
       return;
     }
 
-    const shouldUploadToCloud = saveTarget === 'cloud' && cloudflareConfigured;
-    showToast(shouldUploadToCloud ? 'Procesando MP4 para Cloudflare...' : 'Guardando MP4...');
+    const shouldUploadToCloud = saveTarget === 'cloud' && isCloudProviderConfigured(cloudProvider);
+    const providerLabel = getProviderLabel(cloudProvider);
+    showToast(shouldUploadToCloud ? `Procesando MP4 para ${providerLabel}...` : 'Guardando MP4...');
     const saved = await window.loomLocal.saveRecording({
       title: titleInput.value,
       mimeType: blob.type,
@@ -717,15 +898,16 @@ async function saveRecording() {
     chunks = [];
 
     if (shouldUploadToCloud) {
-      showToast('Subiendo a Cloudflare Stream...');
+      showToast(`Subiendo a ${providerLabel}...`);
       try {
-        const upload = await window.loomLocal.uploadToCloudflare({
+        const upload = await window.loomLocal.uploadToCloud({
           filePath,
           title: titleInput.value,
-          deleteLocal: true
+          deleteLocal: true,
+          provider: cloudProvider
         });
         playRecordCue('complete');
-        showToast(upload.watchUrl ? 'Subido a Cloudflare. Link copiado.' : 'Subido a Cloudflare.');
+        showToast(upload.watchUrl ? `Subido a ${providerLabel}. Link copiado.` : `Subido a ${providerLabel}.`);
       } catch (uploadError) {
         console.error(uploadError);
         const fallback = await window.loomLocal.saveTempRecordingLocally({
@@ -733,8 +915,8 @@ async function saveRecording() {
           title: titleInput.value
         });
         playRecordCue('complete');
-        const reason = humanCloudUploadError(uploadError);
-        showToast(`Cloudflare falló; guardado local: ${fallback.filePath.split('/').pop()}`);
+        const reason = humanCloudUploadError(uploadError, providerLabel);
+        showToast(`${providerLabel} falló; guardado local: ${fallback.filePath.split('/').pop()}`);
         alert(`${reason}\n\nNo perdí la grabación: quedó guardada localmente en:\n${fallback.filePath}`);
       }
     } else {
@@ -749,13 +931,13 @@ async function saveRecording() {
   }
 }
 
-function humanCloudUploadError(error) {
-  const raw = String(error?.message || error || 'Cloudflare no pudo subir el video.');
-  const message = raw.replace(/^Error invoking remote method 'cloudflare:upload': Error:\s*/i, '').trim();
+function humanCloudUploadError(error, providerLabel = 'la nube') {
+  const raw = String(error?.message || error || `${providerLabel} no pudo subir el video.`);
+  const message = raw.replace(/^Error invoking remote method 'cloud(?:flare)?:upload': Error:\s*/i, '').trim();
   if (/storage capacity exceeded|quota|allocated storage/i.test(message)) {
-    return 'Cloudflare Stream se quedó sin espacio para subir videos. Borra videos viejos o compra más minutos/almacenamiento para poder subir más.';
+    return `${providerLabel} se quedó sin espacio o cuota para subir videos. Borra videos viejos, espera a que regrese la cuota o compra más capacidad.`;
   }
-  return `Cloudflare no pudo subir el video: ${message}`;
+  return `${providerLabel} no pudo subir el video: ${message}`;
 }
 
 function cleanup() {
@@ -1224,16 +1406,33 @@ qualityButtons.forEach((button) => button.addEventListener('click', () => {
 if (qualityDropdownBtn) qualityDropdownBtn.addEventListener('click', () => toggleDropdown(qualityMenu));
 if (saveTargetBtn) saveTargetBtn.addEventListener('click', () => toggleDropdown(saveTargetMenu));
 if (cameraDropdownBtn) cameraDropdownBtn.addEventListener('click', () => toggleDropdown(cameraMenu));
+if (cloudProviderBtn) cloudProviderBtn.addEventListener('click', () => toggleDropdown(cloudProviderMenu));
 saveTargetButtons.forEach((button) => button.addEventListener('click', async () => {
   await setSaveTarget(button.dataset.saveTarget);
   closeDropdowns();
 }));
+cloudProviderButtons.forEach((button) => button.addEventListener('click', async () => {
+  await setCloudProvider(button.dataset.cloudProvider);
+  closeDropdowns();
+}));
 if (cloudToggle) {
   cloudToggle.addEventListener('click', async () => {
-    if (!cloudflareConfigured) return;
-    await setSaveTarget(cloudUploadEnabled ? 'local' : 'cloud');
+    await setSaveTarget(cloudUploadEnabled ? 'local' : cloudProvider);
   });
 }
+if (settingsBtn) settingsBtn.addEventListener('click', openSettingsPanel);
+if (settingsCloseBtn) settingsCloseBtn.addEventListener('click', closeSettingsPanel);
+if (saveGoogleSettingsBtn) {
+  saveGoogleSettingsBtn.addEventListener('click', async () => {
+    try {
+      await saveGoogleSettingsFromUi();
+    } catch (error) {
+      alert(`No pude guardar Google: ${error.message}`);
+    }
+  });
+}
+if (authorizeGoogleBtn) authorizeGoogleBtn.addEventListener('click', authorizeGoogleFromUi);
+if (disconnectGoogleBtn) disconnectGoogleBtn.addEventListener('click', disconnectGoogleFromUi);
 startBtn.addEventListener('click', startRecording);
 stopBtn.addEventListener('click', stopRecording);
 restartBtn.addEventListener('click', restartRecording);
@@ -1279,7 +1478,12 @@ cornerQuitBtn.addEventListener('pointerdown', (event) => {
   if (window.loomLocal) window.loomLocal.setMousePassthrough(false);
 });
 window.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') requestQuit();
+  if (event.key !== 'Escape') return;
+  if (settingsPanel && !settingsPanel.classList.contains('hidden')) {
+    closeSettingsPanel();
+    return;
+  }
+  requestQuit();
 });
 cameraTestBtn.addEventListener('click', () => switchCamera(selectedCameraId || cameraDevices[0]?.deviceId));
 cameraButtons.addEventListener('click', (event) => {
