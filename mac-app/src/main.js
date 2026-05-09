@@ -11,6 +11,7 @@ const execFileAsync = promisify(execFile);
 const defaultRecordingsDir = path.join(os.homedir(), 'Desktop');
 const cloudUploadLimitBytes = 200 * 1024 * 1024;
 const cloudProviderIds = ['cloudflare', 'googleDrive', 'youtube'];
+const googleDesktopClientId = '552980012509-nfeitghc0aq7i9e526u0aee2t2btcs95.apps.googleusercontent.com';
 const googleScopes = [
   'https://www.googleapis.com/auth/drive.file',
   'https://www.googleapis.com/auth/youtube.upload'
@@ -402,17 +403,16 @@ async function readGoogleConfig() {
   try {
     const raw = await fs.readFile(getGoogleConfigPath(), 'utf8');
     const saved = JSON.parse(raw);
+    const sameClient = !saved.clientId || String(saved.clientId).trim() === googleDesktopClientId;
     return {
-      clientId: String(saved.clientId || '').trim(),
-      clientSecret: String(saved.clientSecret || '').trim(),
-      refreshToken: String(saved.refreshToken || '').trim(),
-      accessToken: String(saved.accessToken || '').trim(),
-      expiresAt: Number(saved.expiresAt || 0)
+      clientId: googleDesktopClientId,
+      refreshToken: sameClient ? String(saved.refreshToken || '').trim() : '',
+      accessToken: sameClient ? String(saved.accessToken || '').trim() : '',
+      expiresAt: sameClient ? Number(saved.expiresAt || 0) : 0
     };
   } catch {
     return {
-      clientId: '',
-      clientSecret: '',
+      clientId: googleDesktopClientId,
       refreshToken: '',
       accessToken: '',
       expiresAt: 0
@@ -422,8 +422,7 @@ async function readGoogleConfig() {
 
 async function writeGoogleConfig(config) {
   const next = {
-    clientId: String(config.clientId || '').trim(),
-    clientSecret: String(config.clientSecret || '').trim(),
+    clientId: googleDesktopClientId,
     refreshToken: String(config.refreshToken || '').trim(),
     accessToken: String(config.accessToken || '').trim(),
     expiresAt: Number(config.expiresAt || 0)
@@ -435,10 +434,9 @@ async function writeGoogleConfig(config) {
 
 function getGooglePublicStatus(config) {
   return {
-    clientId: config.clientId || '',
-    hasClientSecret: Boolean(config.clientSecret),
+    clientId: googleDesktopClientId,
     authorized: Boolean(config.refreshToken),
-    configured: Boolean(config.clientId && config.clientSecret && config.refreshToken)
+    configured: Boolean(config.refreshToken)
   };
 }
 
@@ -475,18 +473,7 @@ async function getCloudStatus() {
   };
 }
 
-async function saveGoogleCloudSettings(payload = {}) {
-  const current = await readGoogleConfig();
-  const clientId = String(payload.clientId || current.clientId || '').trim();
-  const clientSecret = String(payload.clientSecret || '').trim() || current.clientSecret;
-  const sameClient = clientId === current.clientId && clientSecret === current.clientSecret;
-  await writeGoogleConfig({
-    clientId,
-    clientSecret,
-    refreshToken: sameClient ? current.refreshToken : '',
-    accessToken: sameClient ? current.accessToken : '',
-    expiresAt: sameClient ? current.expiresAt : 0
-  });
+async function saveGoogleCloudSettings() {
   return getCloudStatus();
 }
 
@@ -505,13 +492,24 @@ async function requestGoogleToken(params) {
   return payload;
 }
 
+function base64Url(buffer) {
+  return Buffer.from(buffer)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '');
+}
+
+function createPkcePair() {
+  const verifier = base64Url(crypto.randomBytes(64));
+  const challenge = base64Url(crypto.createHash('sha256').update(verifier).digest());
+  return { verifier, challenge };
+}
+
 async function authorizeGoogleCloud() {
   const config = await readGoogleConfig();
-  if (!config.clientId || !config.clientSecret) {
-    throw new Error('Primero pega el Client ID y Client Secret de Google en Ajustes.');
-  }
-
   const state = crypto.randomBytes(18).toString('hex');
+  const pkce = createPkcePair();
   let timeout;
   let callbackSettled = false;
   let server;
@@ -567,13 +565,15 @@ async function authorizeGoogleCloud() {
 
   const redirectUri = `http://127.0.0.1:${server.address().port}/oauth2callback`;
   const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
-  authUrl.searchParams.set('client_id', config.clientId);
+  authUrl.searchParams.set('client_id', googleDesktopClientId);
   authUrl.searchParams.set('redirect_uri', redirectUri);
   authUrl.searchParams.set('response_type', 'code');
   authUrl.searchParams.set('scope', googleScopes.join(' '));
   authUrl.searchParams.set('access_type', 'offline');
   authUrl.searchParams.set('prompt', 'consent');
   authUrl.searchParams.set('state', state);
+  authUrl.searchParams.set('code_challenge', pkce.challenge);
+  authUrl.searchParams.set('code_challenge_method', 'S256');
 
   await shell.openExternal(authUrl.toString());
 
@@ -594,8 +594,8 @@ async function authorizeGoogleCloud() {
 
   const token = await requestGoogleToken({
     code: codePayload.code,
-    client_id: config.clientId,
-    client_secret: config.clientSecret,
+    client_id: googleDesktopClientId,
+    code_verifier: pkce.verifier,
     redirect_uri: codePayload.redirectUri,
     grant_type: 'authorization_code'
   });
@@ -615,10 +615,7 @@ async function authorizeGoogleCloud() {
 }
 
 async function disconnectGoogleCloud() {
-  const config = await readGoogleConfig();
   await writeGoogleConfig({
-    clientId: config.clientId,
-    clientSecret: config.clientSecret,
     refreshToken: '',
     accessToken: '',
     expiresAt: 0
@@ -628,7 +625,7 @@ async function disconnectGoogleCloud() {
 
 async function getGoogleAccessToken() {
   const config = await readGoogleConfig();
-  if (!config.clientId || !config.clientSecret || !config.refreshToken) {
+  if (!config.refreshToken) {
     throw new Error('Google no esta conectado. Abre Ajustes y autoriza Google Drive/YouTube.');
   }
   if (config.accessToken && config.expiresAt > Date.now() + 30000) {
@@ -636,8 +633,7 @@ async function getGoogleAccessToken() {
   }
 
   const token = await requestGoogleToken({
-    client_id: config.clientId,
-    client_secret: config.clientSecret,
+    client_id: googleDesktopClientId,
     refresh_token: config.refreshToken,
     grant_type: 'refresh_token'
   });

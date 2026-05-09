@@ -191,7 +191,7 @@
           </div>
 
           <div class="settings-note" id="cloudProviderNote">
-            Cloudflare usa tu archivo local de configuración. Google Drive y YouTube usan OAuth de Google.
+            Cloudflare usa tu archivo local de configuración. Google Drive y YouTube se conectan directo en esta Mac con OAuth.
           </div>
 
           <div class="google-settings-card">
@@ -199,17 +199,8 @@
               <strong>Google</strong>
               <small id="googleAuthStatus">Sin conectar</small>
             </div>
-            <label>
-              <span>Client ID</span>
-              <input id="googleClientIdInput" placeholder="OAuth Client ID tipo Desktop">
-            </label>
-            <label>
-              <span>Client Secret</span>
-              <input id="googleClientSecretInput" placeholder="Pegar para guardar o dejar igual" type="password">
-            </label>
-            <p>Activa Google Drive API y YouTube Data API en Google Cloud. Para YouTube se sube como video no listado.</p>
+            <p>Conecta tu cuenta de Google una vez. Loom guardará el acceso sólo en esta Mac y subirá directo a Drive o YouTube no listado.</p>
             <div class="settings-actions">
-              <button id="saveGoogleSettingsBtn" type="button">Guardar</button>
               <button id="authorizeGoogleBtn" class="primary-mini" type="button">Conectar Google</button>
               <button id="disconnectGoogleBtn" type="button">Desconectar</button>
             </div>

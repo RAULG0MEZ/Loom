@@ -62,9 +62,6 @@ const youtubeStatus = document.querySelector('#youtubeStatus');
 const driveSettingsStatus = document.querySelector('#driveSettingsStatus');
 const youtubeSettingsStatus = document.querySelector('#youtubeSettingsStatus');
 const googleAuthStatus = document.querySelector('#googleAuthStatus');
-const googleClientIdInput = document.querySelector('#googleClientIdInput');
-const googleClientSecretInput = document.querySelector('#googleClientSecretInput');
-const saveGoogleSettingsBtn = document.querySelector('#saveGoogleSettingsBtn');
 const authorizeGoogleBtn = document.querySelector('#authorizeGoogleBtn');
 const disconnectGoogleBtn = document.querySelector('#disconnectGoogleBtn');
 const localFolderRow = document.querySelector('#localFolderRow');
@@ -352,14 +349,8 @@ function closeDropdowns() {
 function renderSettingsPanel() {
   const google = cloudStatusState?.google || {};
   if (cloudProviderLabel) cloudProviderLabel.textContent = getProviderLabel(cloudProvider);
-  if (googleClientIdInput && document.activeElement !== googleClientIdInput) {
-    googleClientIdInput.value = google.clientId || '';
-  }
-  if (googleClientSecretInput) {
-    googleClientSecretInput.placeholder = google.hasClientSecret ? 'Guardado; escribe para reemplazar' : 'Client Secret';
-  }
   if (googleAuthStatus) {
-    googleAuthStatus.textContent = google.authorized ? 'Conectado' : google.hasClientSecret ? 'Falta autorizar' : 'Sin conectar';
+    googleAuthStatus.textContent = google.authorized ? 'Conectado' : 'Sin conectar';
   }
   if (disconnectGoogleBtn) disconnectGoogleBtn.disabled = !google.authorized;
   updateSaveUi();
@@ -378,28 +369,9 @@ function closeSettingsPanel() {
   settingsPanel.classList.add('hidden');
 }
 
-async function saveGoogleSettingsFromUi() {
-  if (!window.loomLocal?.saveGoogleCloudSettings) return false;
-  try {
-    const status = await window.loomLocal.saveGoogleCloudSettings({
-      clientId: googleClientIdInput?.value || '',
-      clientSecret: googleClientSecretInput?.value || ''
-    });
-    if (googleClientSecretInput) googleClientSecretInput.value = '';
-    applyCloudStatus(status);
-    updateCloudUi();
-    showToast('Ajustes de Google guardados');
-    return true;
-  } catch (error) {
-    console.error(error);
-    throw error;
-  }
-}
-
 async function authorizeGoogleFromUi() {
   if (!window.loomLocal?.authorizeGoogleCloud) return;
   try {
-    await saveGoogleSettingsFromUi();
     showToast('Abriendo Google para conectar...');
     const status = await window.loomLocal.authorizeGoogleCloud();
     applyCloudStatus(status);
@@ -1422,15 +1394,6 @@ if (cloudToggle) {
 }
 if (settingsBtn) settingsBtn.addEventListener('click', openSettingsPanel);
 if (settingsCloseBtn) settingsCloseBtn.addEventListener('click', closeSettingsPanel);
-if (saveGoogleSettingsBtn) {
-  saveGoogleSettingsBtn.addEventListener('click', async () => {
-    try {
-      await saveGoogleSettingsFromUi();
-    } catch (error) {
-      alert(`No pude guardar Google: ${error.message}`);
-    }
-  });
-}
 if (authorizeGoogleBtn) authorizeGoogleBtn.addEventListener('click', authorizeGoogleFromUi);
 if (disconnectGoogleBtn) disconnectGoogleBtn.addEventListener('click', disconnectGoogleFromUi);
 startBtn.addEventListener('click', startRecording);

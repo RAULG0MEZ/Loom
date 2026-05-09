@@ -57,6 +57,15 @@ En `System Settings > Privacy & Security`, permite:
 
 Después cierra y abre la app otra vez.
 
+## Google Drive y YouTube
+
+La app usa un OAuth Client de tipo Desktop con PKCE y un callback local temporal en `127.0.0.1`. No necesita dominio ni backend para Google. Cada usuario conecta su propia cuenta y los tokens quedan guardados sólo en su Mac.
+
+Scopes usados:
+
+- `https://www.googleapis.com/auth/drive.file`
+- `https://www.googleapis.com/auth/youtube.upload`
+
 ## Diferencias intencionales
 
 No usa la nube de Loom ni servicios propietarios de Loom, y no implementa IA/transcripción porque eso requiere backend/modelos externos. El núcleo de producto sí está: grabación local, pantalla/cámara/mic, biblioteca, controles, dibujo, guardado en tu computadora y subida opcional a nube propia.
